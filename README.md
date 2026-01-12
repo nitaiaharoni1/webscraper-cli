@@ -4,6 +4,17 @@ Powerful CLI tool for website scraping, automation, and crawling using Playwrigh
 
 ## Installation
 
+### Using Homebrew (Recommended)
+
+```bash
+brew tap nitaiaharoni1/tools
+brew install nitaiaharoni1/tools/webscraper-cli
+```
+
+Then use: `webscraper --help`
+
+### Manual Installation
+
 ```bash
 pip install -r requirements.txt
 playwright install chromium
