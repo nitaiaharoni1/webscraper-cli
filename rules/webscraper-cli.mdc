@@ -1,0 +1,113 @@
+---
+name: webscraper-cli
+description: Quick reference for webscraper-cli commands. Use when writing, reviewing, or generating webscraper-cli shell commands or scripts.
+alwaysApply: false
+globs:
+  - "**/*.sh"
+  - "**/*.bash"
+  - "**/Makefile"
+---
+
+# webscraper-cli Quick Reference
+
+Install: `brew install nitaiaharoni1/tools/webscraper-cli`
+
+## Global Options
+
+```
+--headless / --headed    Headless or visible browser (default: headed, stays open)
+--format json|csv|plain|table
+--timeout <ms>           Default: 30000
+--verbose / --quiet
+```
+
+## Navigation
+
+```bash
+webscraper goto "https://example.com" --wait-for "h1" --wait-until networkidle
+webscraper navigate back|forward|reload
+```
+
+## Extraction
+
+```bash
+webscraper text "selector" --url "URL" --all --format plain
+webscraper extract links|images|table|html|attr|count --url "URL"
+webscraper extract attr "a" "href" --all --format csv
+```
+
+## Interactions
+
+```bash
+webscraper click "selector"
+webscraper interact type-text "input" "value"
+webscraper interact select|check|uncheck|hover|focus|drag|scroll|upload|press
+webscraper form fill "form" --data '{"field":"value"}' --url "URL"
+webscraper form submit "form"
+```
+
+## Content
+
+```bash
+webscraper content strip|markdown|meta|schema|forms --url "URL"
+webscraper content xpath "//div/@attr" --text
+webscraper content regex "\d+" --selector "body"
+```
+
+## Crawl & Scroll
+
+```bash
+webscraper crawl site "URL" --depth 2 --extract "h1" --output data/
+webscraper scroll infinite --extract ".item" --max-items 100
+webscraper scroll paginate --next "a.next" --extract ".item" --max-pages 10
+```
+
+## Batch
+
+```bash
+webscraper batch selectors "h1,p,a" --url "URL"
+webscraper batch urls urls.txt --extract "h1" --concurrency 5
+webscraper batch retry "navigate goto URL" --max-attempts 3
+```
+
+## Audits
+
+```bash
+webscraper audit a11y|seo|security|links|images --url "URL"
+webscraper audit links --max-check 50
+```
+
+## Performance & Network
+
+```bash
+webscraper perf vitals|memory --url "URL"
+webscraper monitor console --filter "error"
+webscraper network intercept --block "**/*.png"
+webscraper network throttle --preset slow3g
+webscraper api fetch "URL" --method GET --navigate-to "URL"
+```
+
+## Screenshots & Recording
+
+```bash
+webscraper capture page.png --url "URL" --full-page
+webscraper capture element.png --selector "h1"
+webscraper record video-start --output-file /tmp/video.webm
+webscraper record video-stop
+```
+
+## Emulation
+
+```bash
+webscraper emulate device "iPhone 14"
+webscraper emulate viewport --width 1920 --height 1080
+webscraper emulate geolocation --lat 40.71 --lon -74.00
+```
+
+## Cleanup
+
+```bash
+pkill -f "remote-debugging-port"   # Close lingering browser
+```
+
+Docs: https://github.com/nitaiaharoni1/webscraper-cli

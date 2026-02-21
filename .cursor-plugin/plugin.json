@@ -1,0 +1,32 @@
+{
+  "name": "webscraper-cli",
+  "displayName": "Web Scraper CLI",
+  "version": "1.0.0",
+  "description": "Web scraping and browser automation workflows powered by webscraper-cli and Playwright. Covers data extraction, browser interactions, site crawling, and audits (accessibility, SEO, security, broken links).",
+  "author": {
+    "name": "Nitai Aharoni",
+    "email": "nitaiaharoni1@gmail.com"
+  },
+  "homepage": "https://github.com/nitaiaharoni1/webscraper-cli",
+  "repository": "https://github.com/nitaiaharoni1/webscraper-cli",
+  "license": "MIT",
+  "logo": "assets/logo.png",
+  "keywords": [
+    "webscraper",
+    "scraping",
+    "browser-automation",
+    "playwright",
+    "crawling",
+    "data-extraction"
+  ],
+  "category": "developer-tools",
+  "tags": [
+    "scraping",
+    "automation",
+    "browser",
+    "data",
+    "audit"
+  ],
+  "skills": "./skills/",
+  "rules": "./rules/"
+}
