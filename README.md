@@ -35,6 +35,12 @@ webscraper batch selectors "h1,p,a" --url "https://example.com"
 
 # Run in headless mode (invisible browser, faster for automation)
 webscraper --headless goto "https://example.com"
+
+# Use a proxy
+webscraper --proxy "http://proxy:8080" goto "https://example.com"
+
+# Set custom User-Agent
+webscraper --user-agent "MyBot/1.0" text "h1" --url "https://example.com"
 ```
 
 ## Browser Behavior
@@ -55,11 +61,6 @@ This allows you to:
 pkill -f "remote-debugging-port"
 ```
 
-The browser will close when:
-- You terminate the process (Ctrl+C)
-- The Python process exits
-- You use the cleanup handler in `cli.py`
-
 ## Global Options
 
 All commands support these global options:
@@ -69,6 +70,8 @@ All commands support these global options:
 - `--format/-f` - Output format: json, csv, plain, table (default: json)
 - `--timeout` - Global timeout in milliseconds (default: 30000)
 - `--headless/--headed` - Run in headless mode (default: headed/visible)
+- `--proxy` - Proxy server (e.g., `http://host:port`, `socks5://host:port`)
+- `--user-agent` - Custom User-Agent string
 
 ## Commands
 
@@ -111,6 +114,39 @@ webscraper extract count "p" --url "https://example.com"
 
 # Extract HTML
 webscraper extract html --url "https://example.com" --selector "body"
+
+# Convert page to Markdown
+webscraper extract markdown --output article.md --url "https://example.com"
+
+# Extract meta tags (SEO, Open Graph, Twitter Cards)
+webscraper extract meta --url "https://example.com"
+
+# Extract structured data (JSON-LD, microdata)
+webscraper extract schema --url "https://example.com"
+
+# Query by XPath
+webscraper extract xpath "//div[@class='item']/a/@href" --text
+
+# Extract text matching regex pattern
+webscraper extract regex "\d{3}-\d{4}" --selector "body"
+
+# Strip HTML and get clean readable text
+webscraper extract strip --selector "article" --url "https://example.com"
+
+# List all forms with fields
+webscraper extract forms --url "https://example.com"
+
+# AI-powered smart extraction
+webscraper extract smart --url "https://example.com"
+
+# Get page info (URL, title, meta)
+webscraper extract info --url "https://example.com"
+
+# Auto-scroll infinite scroll pages
+webscraper extract infinite --extract ".item" --max-items 100 --url "https://example.com"
+
+# Auto-paginate and extract
+webscraper extract paginate --next "a.next" --extract ".item" --max-pages 10
 ```
 
 ### Interactions
@@ -130,6 +166,7 @@ webscraper interact uncheck "input[type=checkbox]"
 # Keyboard
 webscraper interact press "Enter"
 webscraper interact press "Escape"
+webscraper interact keyboard "Control+C"
 
 # Mouse
 webscraper interact hover "a.link"
@@ -142,6 +179,18 @@ webscraper interact scroll --to "footer"
 
 # Upload file
 webscraper interact upload "input[type=file]" "/path/to/file.pdf"
+
+# Select dropdown option by value, label, or index
+webscraper interact select-option "select" --value "option1"
+
+# Pinch to zoom (touch gesture)
+webscraper interact pinch --scale 2.0
+
+# Auto-fill form from JSON/YAML
+webscraper interact fill-form "form#signup" --data form-data.json --url "https://example.com"
+
+# Submit form
+webscraper interact submit-form "form#login" --url "https://example.com"
 ```
 
 ### Screenshots
@@ -154,7 +203,13 @@ webscraper capture page.png --url "https://example.com"
 webscraper capture page.png --url "https://example.com" --full-page
 
 # Element screenshot
-webscraper capture element.png --url "https://example.com" --selector "h1"
+webscraper screenshot element "h1" screenshot.png
+
+# Visual diff between screenshots
+webscraper screenshot visual-diff img1.png img2.png --output diff.png
+
+# Save page as PDF
+webscraper screenshot pdf document.pdf --url "https://example.com"
 ```
 
 ### Waiting
@@ -168,6 +223,12 @@ webscraper wait timeout 5000
 
 # Wait for navigation
 webscraper wait navigation --url "https://example.com"
+
+# Wait for network idle
+webscraper wait idle --url "https://example.com"
+
+# Wait for animations to complete
+webscraper wait animation --selector ".animated"
 ```
 
 ### JavaScript Evaluation
@@ -178,16 +239,6 @@ webscraper eval run "document.title" --url "https://example.com"
 
 # Run from file
 webscraper eval run "" --file script.js --url "https://example.com"
-```
-
-### Page Operations
-
-```bash
-# Get page info
-webscraper page info --url "https://example.com"
-
-# Save as PDF
-webscraper page pdf document.pdf --url "https://example.com"
 ```
 
 ### Storage
@@ -217,6 +268,9 @@ webscraper batch urls urls.txt --extract "h1" --concurrency 5
 
 # Run script file (YAML)
 webscraper batch script workflow.yaml
+
+# Retry failed operations
+webscraper batch retry "webscraper goto https://example.com" --max-attempts 3
 ```
 
 **Script file format (workflow.yaml):**
@@ -240,198 +294,12 @@ webscraper crawl site "https://example.com" --depth 2 --extract "h1" --output da
 
 # Crawl with filters
 webscraper crawl site "https://example.com" --follow "*/products/*" --exclude "*/login/*"
-```
 
-### Frames
+# Parse sitemap.xml
+webscraper crawl sitemap "https://example.com/sitemap.xml"
 
-```bash
-# List frames
-webscraper frame list-frames --url "https://example.com"
-
-# Switch to iframe
-webscraper frame switch "iframe#content"
-
-# Switch back to main
-webscraper frame main
-```
-
-### Dialogs
-
-```bash
-# Accept dialog
-webscraper dialog accept --url "https://example.com"
-
-# Accept prompt with text
-webscraper dialog accept --text "response" --url "https://example.com"
-
-# Dismiss dialog
-webscraper dialog dismiss --url "https://example.com"
-```
-
-### Assertions
-
-```bash
-# Assert element exists
-webscraper assert exists "h1" --url "https://example.com"
-
-# Assert text content
-webscraper assert text "h1" --contains "Welcome"
-webscraper assert text "h1" --equals "Example Domain"
-
-# Assert count
-webscraper assert count "p" --equals 2
-webscraper assert count "li" --min 5
-webscraper assert count "div" --max 10
-
-# Assert visibility
-webscraper assert visible "button.submit"
-```
-
-### Daemon Mode (Performance)
-
-```bash
-# Start daemon (persistent browser)
-webscraper daemon start --port 9222
-
-# Connect to daemon (fast - no browser launch overhead)
-webscraper daemon connect
-
-# Check status
-webscraper daemon status
-
-# Stop daemon
-webscraper daemon stop
-```
-
-## Output Formats
-
-- `json` - JSON output (default)
-- `csv` - CSV format (for lists of objects)
-- `plain` - Plain text
-- `table` - Formatted table (using Rich)
-
-## Examples
-
-### Complete Workflow
-
-```bash
-# Navigate, extract, and screenshot
-webscraper goto "https://example.com"
-webscraper text "h1" --format plain
-webscraper extract links --format csv > links.csv
-webscraper capture page.png
-```
-
-### Form Automation
-
-```bash
-# Fill and submit form
-webscraper interact type-text "input[name=email]" "user@example.com" --url "https://example.com/form"
-webscraper interact type-text "input[name=password]" "password123" --url "https://example.com/form"
-webscraper interact check "input[type=checkbox]" --url "https://example.com/form"
-webscraper interact press "Enter" --url "https://example.com/form"
-```
-
-### Data Scraping
-
-```bash
-# Extract structured data
-webscraper extract table "table.data" --url "https://example.com/data" --format csv > data.csv
-webscraper extract images --url "https://example.com/gallery" --format json
-webscraper extract attr "a.product-link" "href" --all --url "https://example.com/products"
-```
-
-### Batch Processing
-
-```bash
-# Scrape multiple pages
-webscraper batch urls urls.txt --extract "h1" --concurrency 10 --format json > results.json
-
-# Extract multiple selectors
-webscraper batch selectors "h1.title,p.description,a.link" --url "https://example.com"
-```
-
-### Testing/Validation
-
-```bash
-# Assert page loaded correctly
-webscraper assert exists "h1" --url "https://example.com"
-webscraper assert text "h1" --equals "Example Domain"
-webscraper assert count "p" --min 1
-```
-
-## Performance Tips
-
-1. **Browser persistence** (default) - Browser stays open between commands for faster execution
-
-2. **Use daemon mode** for long-running workflows:
-   ```bash
-   webscraper daemon start
-   webscraper goto "https://example.com"  # Fast - reuses browser
-   ```
-
-3. **Batch operations** for parallel processing:
-   ```bash
-   webscraper batch urls urls.txt --concurrency 10
-   ```
-
-4. **Use headless mode** (`--headless`) for faster execution in automation
-
-5. **Optimize selectors** - Use specific selectors instead of generic ones
-
-## New Advanced Operations
-
-### Content Extraction & Transformation
-
-```bash
-# Strip HTML and get clean readable text
-webscraper content strip --selector "article" --url "https://example.com"
-
-# Convert page to Markdown
-webscraper content markdown --output article.md --url "https://example.com"
-
-# Extract meta tags (SEO, Open Graph, Twitter Cards)
-webscraper content meta --url "https://example.com"
-
-# Extract structured data (JSON-LD, microdata)
-webscraper content schema --url "https://example.com"
-
-# Query by XPath
-webscraper content xpath "//div[@class='item']/a/@href" --text
-
-# Extract text matching regex pattern
-webscraper content regex "\d{3}-\d{4}" --selector "body"
-
-# List all forms with fields
-webscraper content forms --url "https://example.com"
-```
-
-### Clipboard & Selection
-
-```bash
-# Copy text to clipboard
-webscraper clipboard copy "h1"
-
-# Paste from clipboard into input
-webscraper clipboard paste "input[name=email]"
-
-# Select text range in element
-webscraper clipboard select-text "p" --start 0 --end 50
-```
-
-### Downloads & Export
-
-```bash
-# Download file from URL or button
-webscraper download file --url "https://example.com/file.pdf" --output-dir ./downloads
-webscraper download file --selector "a.download" --output-dir ./downloads
-
-# Export extracted data to file
-webscraper download export links --format csv --output links.csv
-webscraper download export images --format json --output images.json
-
-# Save page HTML to file
-webscraper download save-html --output page.html
+# Parse RSS feed
+webscraper crawl rss "https://example.com/feed.xml"
 ```
 
 ### Network & Requests
@@ -448,6 +316,15 @@ webscraper network headers set --name "Authorization" --value "Bearer xxx"
 
 # Set HTTP Basic Auth
 webscraper network auth --username "admin" --password "secret" --url "https://example.com"
+
+# Throttle network speed
+webscraper network throttle --preset slow-3g --url "https://example.com"
+
+# Toggle offline mode
+webscraper network offline --enable true
+
+# Monitor WebSocket connections
+webscraper network websocket --url "https://example.com" --duration 10
 ```
 
 ### Browser Emulation
@@ -461,76 +338,52 @@ webscraper emulate viewport --width 1920 --height 1080
 
 # Set geolocation
 webscraper emulate geolocation --lat 40.7128 --lon -74.0060 --url "https://example.com"
+
+# Responsive screenshots (all viewports)
+webscraper emulate responsive --url "https://example.com" --output-dir screenshots
+
+# Toggle dark mode
+webscraper emulate dark-mode --enable true --url "https://example.com"
+
+# Toggle reduced motion
+webscraper emulate reduced-motion --enable true
+
+# Print preview / save as PDF
+webscraper emulate print-preview --output page.pdf
+
+# Toggle high contrast
+webscraper emulate contrast --enable true
 ```
 
-### Form Automation
+### Audits & Performance
 
 ```bash
-# Auto-fill form from JSON/YAML
-webscraper form fill "form#signup" --data form-data.json --url "https://example.com"
+# Accessibility audit
+webscraper audit a11y --url "https://example.com"
 
-# Submit form
-webscraper form submit "form#login" --url "https://example.com"
-```
+# SEO audit
+webscraper audit seo --url "https://example.com"
 
-### Advanced Scrolling
+# Security headers check
+webscraper audit security --url "https://example.com"
 
-```bash
-# Auto-scroll infinite scroll pages
-webscraper scroll infinite --extract ".item" --max-items 100 --url "https://example.com"
+# Find mixed content
+webscraper audit mixed --url "https://example.com"
 
-# Auto-paginate and extract
-webscraper scroll paginate --next "a.next" --extract ".item" --max-pages 10
-```
+# Find broken links
+webscraper audit links --url "https://example.com" --max-check 50
 
-### Shadow DOM
+# Image optimization audit
+webscraper audit images --url "https://example.com"
 
-```bash
-# Access elements inside Shadow DOM
-webscraper shadow access "my-component" --selector ".inner" --url "https://example.com"
-```
+# Get Core Web Vitals
+webscraper audit vitals --url "https://example.com"
 
-### Monitoring & Debugging
+# Run performance audit
+webscraper audit lighthouse --url "https://example.com"
 
-```bash
-# Capture console logs
-webscraper monitor console --filter "error" --url "https://example.com"
-
-# Get performance metrics
-webscraper monitor performance --url "https://example.com"
-
-# Highlight elements (visual debugging)
-webscraper monitor highlight "a.broken" --color red
-
-# Record actions for replay
-webscraper monitor record start --output actions.yaml
-webscraper monitor record stop --output actions.yaml
-webscraper monitor record replay --output actions.yaml
-```
-
-### Comparison & Snapshots
-
-```bash
-# Save page snapshot
-webscraper compare snapshot --output snap1.json --url "https://example.com"
-
-# Compare two snapshots
-webscraper compare diff --snapshot1 snap1.json --snapshot2 snap2.json --format unified
-```
-
-## New Features (50+ Operations)
-
-### Screenshot Enhancements
-
-```bash
-# Element-specific screenshot
-webscraper screenshot element "h1" screenshot.png
-
-# Full page screenshot (scrolling)
-webscraper screenshot fullpage page.png
-
-# Visual diff between screenshots
-webscraper screenshot visual-diff img1.png img2.png --output diff.png
+# Get memory usage
+webscraper audit memory --url "https://example.com"
 ```
 
 ### Browser API Execution
@@ -544,19 +397,6 @@ webscraper api har output.har --url "https://example.com"
 
 # Mock API endpoints
 webscraper api mock "*/api/*" --response-json '{"mocked": true}' --status 200
-```
-
-### Performance Analysis
-
-```bash
-# Get Core Web Vitals
-webscraper perf vitals --url "https://example.com"
-
-# Run performance audit
-webscraper perf lighthouse --url "https://example.com"
-
-# Get memory usage
-webscraper perf memory --url "https://example.com"
 ```
 
 ### Element Inspection
@@ -591,41 +431,6 @@ webscraper human mouse ".button" --action click
 webscraper human drag ".item" ".target"
 ```
 
-### Accessibility & Audits
-
-```bash
-# Accessibility audit
-webscraper audit a11y --url "https://example.com"
-
-# SEO audit
-webscraper audit seo --url "https://example.com"
-
-# Security headers check
-webscraper audit security --url "https://example.com"
-
-# Find mixed content
-webscraper audit mixed --url "https://example.com"
-
-# Find broken links
-webscraper audit links --url "https://example.com" --max-check 50
-
-# Image optimization audit
-webscraper audit images --url "https://example.com"
-```
-
-### Network Simulation
-
-```bash
-# Throttle network speed
-webscraper network throttle --preset slow-3g --url "https://example.com"
-
-# Toggle offline mode
-webscraper network offline --enable true
-
-# Monitor WebSocket connections
-webscraper network websocket --url "https://example.com" --duration 10
-```
-
 ### Recording & Replay
 
 ```bash
@@ -642,7 +447,7 @@ webscraper record video-stop
 webscraper record video-context --output-dir ./videos --url "https://example.com"
 ```
 
-### Tab & History Management
+### Tabs
 
 ```bash
 # Open new tab
@@ -656,142 +461,168 @@ webscraper tabs switch 0
 
 # List all tabs
 webscraper tabs list
-
-# Navigate history
-webscraper tabs back
-webscraper tabs forward
-webscraper tabs history
 ```
 
-### Visual Testing
+### Clipboard & Selection
 
 ```bash
-# Responsive screenshots (all viewports)
-webscraper visual responsive --url "https://example.com" --output-dir screenshots
+# Copy text to clipboard
+webscraper clipboard copy "h1"
 
-# Toggle dark mode
-webscraper visual dark-mode --enable true --url "https://example.com"
+# Paste from clipboard into input
+webscraper clipboard paste "input[name=email]"
 
-# Toggle reduced motion
-webscraper visual reduced-motion --enable true
-
-# Print preview
-webscraper visual print-preview --output page.pdf
-
-# Set custom viewport
-webscraper visual viewport --width 1920 --height 1080
-
-# Toggle high contrast
-webscraper visual contrast --enable true
+# Select text range in element
+webscraper clipboard select-text "p" --start 0 --end 50
 ```
 
-### Enhanced Interactions
+### Downloads & Export
 
 ```bash
-# Keyboard shortcuts
-webscraper interact keyboard "Control+C"
+# Download file from URL or button
+webscraper download file --url "https://example.com/file.pdf" --output-dir ./downloads
+webscraper download file --selector "a.download" --output-dir ./downloads
 
-# Select dropdown option
-webscraper interact select-option "select" --value "option1"
+# Export extracted data to file
+webscraper download export links --format csv --output links.csv
+webscraper download export images --format json --output images.json
 
-# Pinch to zoom (touch gesture)
-webscraper interact pinch --scale 2.0
+# Save page HTML to file
+webscraper download save-html --output page.html
 ```
 
-### Enhanced Extraction
+### Shadow DOM
 
 ```bash
-# Extract social meta tags
-webscraper extract social --url "https://example.com"
-
-# Export table to CSV
-webscraper extract table-csv "table" output.csv --url "https://example.com"
+# Access elements inside Shadow DOM
+webscraper shadow access "my-component" --selector ".inner" --url "https://example.com"
 ```
 
-### Enhanced Crawling
+### Frames
 
 ```bash
-# Parse sitemap.xml
-webscraper crawl sitemap "https://example.com/sitemap.xml"
+# List frames
+webscraper frame list-frames --url "https://example.com"
 
-# Parse RSS feed
-webscraper crawl rss "https://example.com/feed.xml"
+# Switch to iframe
+webscraper frame switch "iframe#content"
+
+# Switch back to main
+webscraper frame main
 ```
 
-### Enhanced Waiting
+### Dialogs
 
 ```bash
-# Wait for network idle
-webscraper wait idle --url "https://example.com"
+# Accept dialog
+webscraper dialog accept --url "https://example.com"
 
-# Wait for animations to complete
-webscraper wait animation --selector ".animated"
+# Accept prompt with text
+webscraper dialog accept --text "response" --url "https://example.com"
+
+# Dismiss dialog
+webscraper dialog dismiss --url "https://example.com"
 ```
 
-### Enhanced Batch Operations
+## Output Formats
+
+- `json` - JSON output (default)
+- `csv` - CSV format (for lists of objects)
+- `plain` - Plain text
+- `table` - Formatted table (using Rich)
+
+## Examples
+
+### Complete Workflow
 
 ```bash
-# Retry failed operations
-webscraper batch retry "webscraper goto https://example.com" --max-attempts 3
+# Navigate, extract, and screenshot
+webscraper goto "https://example.com"
+webscraper text "h1" --format plain
+webscraper extract links --format csv > links.csv
+webscraper capture page.png
 ```
 
-### Conditional Flow Control
+### Form Automation
 
 ```bash
-# Conditional execution
-webscraper flow if ".error" --then-command "echo Error found" --else-command "echo Success"
+# Fill and submit form
+webscraper interact type-text "input[name=email]" "user@example.com" --url "https://example.com/form"
+webscraper interact type-text "input[name=password]" "password123"
+webscraper interact check "input[type=checkbox]"
+webscraper interact press "Enter"
 
-# Check element existence
-webscraper flow exists ".button" --url "https://example.com"
-
-# Loop through elements
-webscraper flow loop ".item" --command "echo Processing item $INDEX"
+# Or use auto-fill
+webscraper interact fill-form "form#signup" --data '{"email": "user@example.com", "password": "pass"}' --url "https://example.com/form"
+webscraper interact submit-form "form#signup"
 ```
 
-### Local Server
+### Data Scraping
 
 ```bash
-# Start local HTTP server
-webscraper serve start --directory ./public --port 8000
-
-# Start proxy server
-webscraper serve proxy --target "https://example.com" --port 8080
+# Extract structured data
+webscraper extract table "table.data" --url "https://example.com/data" --format csv > data.csv
+webscraper extract images --url "https://example.com/gallery" --format json
+webscraper extract attr "a.product-link" "href" --all --url "https://example.com/products"
 ```
+
+### Batch Processing
+
+```bash
+# Scrape multiple pages
+webscraper batch urls urls.txt --extract "h1" --concurrency 10 --format json > results.json
+
+# Extract multiple selectors
+webscraper batch selectors "h1.title,p.description,a.link" --url "https://example.com"
+```
+
+### Infinite Scroll & Pagination
+
+```bash
+# Auto-scroll and collect items
+webscraper extract infinite --extract ".item" --max-items 100 --url "https://example.com/feed"
+
+# Follow pagination links
+webscraper extract paginate --next "a.next" --extract ".item" --max-pages 10 --url "https://example.com/list"
+```
+
+## Performance Tips
+
+1. **Browser persistence** (default) - Browser stays open between commands for faster execution
+
+2. **Batch operations** for parallel processing:
+   ```bash
+   webscraper batch urls urls.txt --concurrency 10
+   ```
+
+3. **Use headless mode** (`--headless`) for faster execution in automation
+
+4. **Optimize selectors** - Use specific selectors instead of generic ones
 
 ## Command Reference
 
 | Category | Commands |
 |----------|----------|
-| **Navigation** | goto, navigate (back, forward, reload), tabs (open, close, switch, list, back, forward, history) |
-| **Extraction** | text, extract (text, links, html, attr, images, table, count, social, table-csv) |
-| **Content** | content (strip, markdown, meta, schema, xpath, regex, forms) |
-| **Interactions** | click, interact (type-text, hover, scroll, select, check, uncheck, press, focus, drag, upload, keyboard, select-option, pinch) |
-| **Human-like** | human (type, mouse, drag) |
-| **Clipboard** | clipboard (copy, paste, select-text) |
-| **Downloads** | download (file, export, save-html) |
-| **Network** | network (intercept, requests, headers, auth, throttle, offline, websocket) |
-| **API** | api (fetch, har, mock) |
-| **Emulation** | emulate (device, viewport, geolocation) |
-| **Forms** | form (fill, submit) |
-| **Scrolling** | scroll (infinite, paginate) |
-| **Shadow DOM** | shadow (access) |
-| **Monitoring** | monitor (console, performance, highlight, record) |
-| **Performance** | perf (vitals, lighthouse, memory) |
-| **Inspection** | inspect (styles, bounds, contrast, fonts, sw) |
-| **Audits** | audit (a11y, seo, security, mixed, links, images) |
-| **Visual Testing** | visual (responsive, dark-mode, reduced-motion, print-preview, viewport, contrast) |
-| **Recording** | record (start, stop, replay, video-start, video-stop, video-context) |
-| **Comparison** | compare (snapshot, diff) |
-| **Screenshots** | capture, screenshot (capture, element, fullpage, visual-diff) |
+| **Navigation** | goto, navigate (back, forward, reload) |
+| **Extraction** | text, extract (text, links, html, attr, images, table, count, table-csv, strip, markdown, meta, schema, xpath, regex, forms, expand, smart, info, infinite, paginate) |
+| **Interactions** | click, interact (type-text, hover, scroll, select, check, uncheck, press, focus, drag, upload, keyboard, select-option, pinch, fill-form, submit-form) |
+| **Screenshots** | capture, screenshot (capture, element, visual-diff, pdf) |
 | **Waiting** | wait (selector, timeout, navigation, idle, animation) |
 | **JavaScript** | eval (run) |
-| **Page** | page (info, pdf) |
 | **Storage** | storage (cookies, localstorage) |
 | **Batch** | batch (urls, script, selectors, retry) |
 | **Crawling** | crawl (site, sitemap, rss) |
-| **Flow Control** | flow (if, exists, loop) |
-| **Server** | serve (start, proxy) |
+| **Network** | network (intercept, requests, headers, auth, throttle, offline, websocket) |
+| **Emulation** | emulate (device, viewport, geolocation, responsive, dark-mode, reduced-motion, print-preview, contrast) |
+| **Audits** | audit (a11y, seo, security, mixed, links, images, vitals, lighthouse, memory) |
+| **API** | api (fetch, har, mock) |
+| **Inspection** | inspect (styles, bounds, contrast, fonts, sw) |
+| **Human-like** | human (type, mouse, drag) |
+| **Recording** | record (start, stop, replay, video-start, video-stop, video-context) |
+| **Tabs** | tabs (open, close, switch, list) |
+| **Clipboard** | clipboard (copy, paste, select-text) |
+| **Downloads** | download (file, export, save-html) |
+| **Shadow DOM** | shadow (access) |
 | **Frames** | frame (switch, main, list-frames) |
 | **Dialogs** | dialog (accept, dismiss) |
-| **Assertions** | assert (exists, text, count, visible) |
-| **Daemon** | daemon (start, stop, status, connect) |
+| **Docs** | docs (commands, help, categories) |

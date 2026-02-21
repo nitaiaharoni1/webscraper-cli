@@ -1,0 +1,42 @@
+[project]
+name = "webscraper-cli"
+version = "2.0.0"
+description = "Powerful CLI tool for website scraping, automation, and crawling"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "playwright>=1.40.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0.0",
+    "html2text>=2020.1.16",
+    "markdownify>=0.11.6",
+    "pyperclip>=1.8.2",
+    "Pillow>=10.0.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "F401",   # unused imports — some are re-exports
+    "E741",   # ambiguous variable name
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "commands"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingModuleSource = false
+reportOptionalMemberAccess = false
+reportOptionalSubscript = false
+reportArgumentType = "warning"
+reportAttributeAccessIssue = false
+exclude = ["**/__pycache__"]

@@ -12,9 +12,9 @@ class CLIError(Exception):
         super().__init__(self.message)
 
     def __str__(self):
-        result = f'Error: {self.message}'
+        result = f"Error: {self.message}"
         if self.suggestion:
-            result += f'\nSuggestion: {self.suggestion}'
+            result += f"\nSuggestion: {self.suggestion}"
         return result
 
 
@@ -24,7 +24,7 @@ class ElementNotFoundError(CLIError):
     def __init__(self, selector: str):
         super().__init__(
             f'Element "{selector}" not found',
-            f'Check if the selector is correct or if the page has fully loaded. Try using --wait-for "{selector}" first.'
+            f'Check if the selector is correct or if the page has fully loaded. Try using --wait-for "{selector}" first.',
         )
 
 
@@ -33,8 +33,8 @@ class NavigationError(CLIError):
 
     def __init__(self, url: str, reason: str):
         super().__init__(
-            f'Failed to navigate to {url}: {reason}',
-            'Check if the URL is correct and accessible. Try increasing --timeout if the page loads slowly.'
+            f"Failed to navigate to {url}: {reason}",
+            "Check if the URL is correct and accessible. Try increasing --timeout if the page loads slowly.",
         )
 
 
@@ -43,6 +43,6 @@ class TimeoutError(CLIError):
 
     def __init__(self, operation: str, timeout: int):
         super().__init__(
-            f'{operation} timed out after {timeout}ms',
-            f'Try increasing --timeout or check if the page/selector is accessible.'
+            f"{operation} timed out after {timeout}ms",
+            "Try increasing --timeout or check if the page/selector is accessible.",
         )
