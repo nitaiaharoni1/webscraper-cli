@@ -1,12 +1,14 @@
 """Browser management for Playwright connections."""
 
 import atexit
+import json
 import os
 import platform
 import shutil
 import socket
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -15,6 +17,9 @@ BrowserMode = Literal["fresh", "cdp", "profile", "persistent"]
 
 # File to store persistent browser port
 BROWSER_PORT_FILE = os.path.expanduser("~/.webscraper-browser-port")
+
+# Directory to store per-session state (URL + cookies) across CLI invocations
+SESSION_STATE_DIR = Path.home() / ".webscraper-sessions"
 
 
 def find_free_port() -> int:
@@ -367,20 +372,65 @@ def get_browser_manager() -> BrowserManager:
     return _browser_manager
 
 
+def _session_state_path(session_id: str) -> Path:
+    """Return the path to the persisted state file for a session."""
+    return SESSION_STATE_DIR / f"{session_id}.json"
+
+
+async def save_session_state(connection: "BrowserConnection", session_id: str) -> None:
+    """Persist the current page URL and browser storage state to disk."""
+    try:
+        SESSION_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        storage = await connection.context.storage_state()
+        state = {
+            "url": connection.page.url,
+            "storage_state": storage,
+        }
+        _session_state_path(session_id).write_text(json.dumps(state))
+    except Exception:
+        pass  # State save is best-effort
+
+
+def load_session_state(session_id: str) -> Optional[Dict[str, Any]]:
+    """Load previously persisted session state from disk, or None if absent."""
+    path = _session_state_path(session_id)
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass
+    return None
+
+
 async def get_or_create_connection(
     session_id: Optional[str] = None,
     headless: bool = False,
     proxy: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> BrowserConnection:
-    """Get existing connection or create a new one."""
+    """Get existing connection or create a new one.
+
+    When a named session_id is provided and the session was previously saved to
+    disk, the new connection restores cookies/localStorage and navigates back to
+    the last visited URL automatically.
+    """
     bm = get_browser_manager()
     effective_session_id = session_id or "default"
 
-    # Check for existing connection
+    # Check for existing in-memory connection first
     connection = bm.get_connection(effective_session_id)
     if connection:
         return connection
+
+    # Load persisted state for named sessions (not the anonymous "default")
+    saved_state = load_session_state(effective_session_id) if session_id else None
+
+    # Build context options — include storage state for headless sessions
+    context_options: Dict[str, Any] = {}
+    if user_agent:
+        context_options["user_agent"] = user_agent
+    if saved_state and headless and saved_state.get("storage_state"):
+        context_options["storage_state"] = saved_state["storage_state"]
 
     # Use persistent mode for headed, fresh for headless
     mode = "fresh" if headless else "persistent"
@@ -392,4 +442,12 @@ async def get_or_create_connection(
         proxy=proxy,
         user_agent=user_agent,
     )
+
+    # Restore the last visited URL for the session
+    if saved_state and saved_state.get("url") and saved_state["url"] not in ("about:blank", "chrome://new-tab-page/"):
+        try:
+            await connection.page.goto(saved_state["url"], wait_until="load", timeout=30000)
+        except Exception:
+            pass  # Restoration is best-effort
+
     return connection

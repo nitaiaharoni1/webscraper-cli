@@ -21,6 +21,7 @@ def text(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     all: bool = typer.Option(False, "--all/--first", help="Extract from all matching elements"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table (overrides global)"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -39,6 +40,8 @@ def text(
 
     async def _extract_text():
         connection = await get_connection(session_id, headless, url)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
 
         # Optimize bulk extraction with single JS call
         if all:
@@ -68,6 +71,7 @@ def links(
     selector: Optional[str] = typer.Option("a", help="CSS selector for links"),
     absolute: bool = typer.Option(False, "--absolute/--relative", help="Convert relative URLs to absolute"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -77,6 +81,8 @@ def links(
 
     async def _extract_links():
         connection = await get_connection(session_id, headless, url)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
 
         # Optimize with single JS call
         base_url = connection.page.url
@@ -113,6 +119,7 @@ def html(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     selector: Optional[str] = typer.Option(None, help="CSS selector (extracts innerHTML if specified)"),
     outer: bool = typer.Option(False, "--outer/--inner", help="Extract outerHTML instead of innerHTML"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -122,6 +129,8 @@ def html(
 
     async def _extract_html():
         connection = await get_connection(session_id, headless, url)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
 
         if selector:
             element = connection.page.locator(selector).first
@@ -599,6 +608,7 @@ def strip(
     wait_until: str = typer.Option(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -607,6 +617,8 @@ def strip(
 
     async def _strip():
         connection = await get_connection(session_id, headless, url, wait_until=wait_until)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
         try:
             # Expand collapsible elements if requested
             if expand:
@@ -643,6 +655,7 @@ def markdown(
     wait_until: str = typer.Option(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -652,6 +665,8 @@ def markdown(
 
     async def _markdown():
         connection = await get_connection(session_id, headless, url, wait_until=wait_until)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
         try:
             # Expand collapsible elements if requested
             if expand:

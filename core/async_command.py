@@ -4,7 +4,7 @@ import asyncio
 import sys
 from typing import Optional
 
-from core.browser import BrowserConnection, get_or_create_connection
+from core.browser import BrowserConnection, get_or_create_connection, save_session_state
 from core.errors import CLIError, NavigationError
 from core.settings import settings
 
@@ -59,7 +59,18 @@ async def get_connection(
         try:
             await connection.page.goto(url, wait_until=wait_until, timeout=settings.timeout)
         except Exception as e:
-            raise NavigationError(url, str(e))
+            # networkidle times out on SPAs with persistent background polling — fall back to load
+            if wait_until == "networkidle" and "Timeout" in str(e):
+                try:
+                    await connection.page.wait_for_load_state("load", timeout=10000)
+                except Exception:
+                    pass  # Page is already loaded; background activity is fine
+            else:
+                raise NavigationError(url, str(e))
+
+        # Persist session state so the next CLI invocation can restore it
+        if session_id:
+            await save_session_state(connection, session_id)
 
     return connection
 

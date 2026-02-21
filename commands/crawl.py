@@ -34,7 +34,7 @@ def site(
     follow: Optional[str] = typer.Option(None, help="URL pattern to follow (glob pattern)"),
     exclude: Optional[str] = typer.Option(None, help="URL pattern to exclude (glob pattern)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory for results"),
-    concurrency: int = typer.Option(3, "--concurrency", "-c", help="Number of parallel requests"),
+    concurrency: int = typer.Option(1, "--concurrency", "-c", help="Number of parallel requests [default: 1]"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
 ):
@@ -52,6 +52,11 @@ def site(
         if output:
             os.makedirs(output, exist_ok=True)
 
+        # Slot pool: max `concurrency` browser instances, reused across all pages
+        slot_pool: asyncio.Queue = asyncio.Queue()
+        for i in range(concurrency):
+            await slot_pool.put(i)
+
         async def crawl_page(page_url: str, current_depth: int):
             """Crawl a single page."""
             if page_url in visited or current_depth > depth:
@@ -60,80 +65,79 @@ def site(
             visited.add(page_url)
             log_verbose(f"Crawling {page_url} (depth {current_depth})")
 
-            connection = await get_connection(f"{session_id or 'crawl'}-{hash(page_url)}", headless, page_url)
+            # Borrow a slot from the pool (limits to `concurrency` browsers)
+            slot = await slot_pool.get()
+            try:
+                connection = await get_connection(f"{session_id or 'crawl'}-{slot}", headless, page_url)
 
-            result = {
-                "url": page_url,
-                "depth": current_depth,
-                "title": await connection.page.title(),
-            }
+                result = {
+                    "url": page_url,
+                    "depth": current_depth,
+                    "title": await connection.page.title(),
+                }
 
-            # Extract data if selector provided
-            if extract:
-                try:
-                    extracted = await connection.page.evaluate(f"""
-                        Array.from(document.querySelectorAll('{extract}'))
-                            .map(el => el.textContent?.trim() || '')
-                            .filter(text => text)
+                # Extract data if selector provided
+                if extract:
+                    try:
+                        extracted = await connection.page.evaluate(f"""
+                            Array.from(document.querySelectorAll('{extract}'))
+                                .map(el => el.textContent?.trim() || '')
+                                .filter(text => text)
+                        """)
+                        result["extracted"] = extracted if len(extracted) > 1 else (extracted[0] if extracted else "")
+                    except Exception as e:
+                        result["extract_error"] = str(e)
+
+                # Extract links for next level
+                if current_depth < depth:
+                    links = await connection.page.evaluate("""
+                        Array.from(document.querySelectorAll('a'))
+                            .map(a => a.href)
+                            .filter(href => href && !href.startsWith('javascript:') && !href.startsWith('mailto:'))
                     """)
-                    result["extracted"] = extracted if len(extracted) > 1 else (extracted[0] if extracted else "")
-                except Exception as e:
-                    result["extract_error"] = str(e)
 
-            # Extract links for next level
-            if current_depth < depth:
-                links = await connection.page.evaluate("""
-                    Array.from(document.querySelectorAll('a'))
-                        .map(a => a.href)
-                        .filter(href => href && !href.startsWith('javascript:') && !href.startsWith('mailto:'))
-                """)
+                    # Filter and add new URLs
+                    for link in links:
+                        # Make absolute URL
+                        absolute_url = urljoin(page_url, link)
+                        parsed = urlparse(absolute_url)
 
-                # Filter and add new URLs
-                for link in links:
-                    # Make absolute URL
-                    absolute_url = urljoin(page_url, link)
-                    parsed = urlparse(absolute_url)
+                        # Check if URL matches follow pattern
+                        if follow and not fnmatch.fnmatch(absolute_url, follow):
+                            continue
 
-                    # Check if URL matches follow pattern
-                    if follow and not fnmatch.fnmatch(absolute_url, follow):
-                        continue
+                        # Check if URL matches exclude pattern
+                        if exclude and fnmatch.fnmatch(absolute_url, exclude):
+                            continue
 
-                    # Check if URL matches exclude pattern
-                    if exclude and fnmatch.fnmatch(absolute_url, exclude):
-                        continue
+                        # Check if same domain
+                        if parsed.netloc == base_domain or parsed.netloc == "":
+                            if absolute_url not in visited:
+                                to_visit.append((absolute_url, current_depth + 1))
 
-                    # Check if same domain
-                    if parsed.netloc == base_domain or parsed.netloc == "":
-                        if absolute_url not in visited:
-                            to_visit.append((absolute_url, current_depth + 1))
+                # Save to file if output directory specified
+                if output:
+                    safe_filename = urlparse(page_url).path.replace("/", "_") or "index"
+                    if safe_filename.startswith("_"):
+                        safe_filename = safe_filename[1:]
+                    if not safe_filename:
+                        safe_filename = "index"
+                    output_file = os.path.join(output, f"{safe_filename}.json")
+                    with open(output_file, "w") as f:
+                        json.dump(result, f, indent=2)
 
-            # Save to file if output directory specified
-            if output:
-                safe_filename = urlparse(page_url).path.replace("/", "_") or "index"
-                if safe_filename.startswith("_"):
-                    safe_filename = safe_filename[1:]
-                if not safe_filename:
-                    safe_filename = "index"
-                output_file = os.path.join(output, f"{safe_filename}.json")
-                with open(output_file, "w") as f:
-                    json.dump(result, f, indent=2)
+                return result
+            finally:
+                await slot_pool.put(slot)
 
-            return result
-
-        # Process URLs with concurrency limit
-        semaphore = asyncio.Semaphore(concurrency)
-
-        async def process_with_semaphore(page_url, current_depth):
-            async with semaphore:
-                return await crawl_page(page_url, current_depth)
-
+        # The slot_pool already limits concurrency — no separate semaphore needed
         with create_progress("Crawling site...") as progress:
             task = progress.add_task("Pages crawled", total=None)
 
             while to_visit:
-                # Get batch of URLs to process
+                # Dispatch a batch of pending URLs concurrently (pool enforces limit)
                 batch = []
-                while to_visit and len(batch) < concurrency:
+                while to_visit:
                     url_item = to_visit.pop(0)
                     if url_item[0] not in visited:
                         batch.append(url_item)
@@ -141,8 +145,7 @@ def site(
                 if not batch:
                     break
 
-                # Process batch in parallel
-                tasks = [process_with_semaphore(url_item[0], url_item[1]) for url_item in batch]
+                tasks = [crawl_page(url_item[0], url_item[1]) for url_item in batch]
                 for coro in asyncio.as_completed(tasks):
                     result = await coro
                     if result:

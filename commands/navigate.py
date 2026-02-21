@@ -3,9 +3,12 @@
 from typing import Optional
 
 import typer
+from rich.console import Console
 
 from core.async_command import get_connection, run_async
 from core.output import output_json
+
+console = Console(stderr=True)
 
 app = typer.Typer()
 
@@ -31,7 +34,18 @@ def goto(
 
     async def _goto():
         connection = await get_connection(session_id, headless)
-        await connection.page.goto(url, timeout=timeout, wait_until=wait_until)
+        try:
+            await connection.page.goto(url, timeout=timeout, wait_until=wait_until)
+        except Exception as e:
+            # networkidle times out on SPAs with persistent background polling — fall back to load
+            if wait_until == "networkidle" and "Timeout" in str(e):
+                console.print("[yellow]Warning: networkidle timed out, falling back to load state[/yellow]")
+                try:
+                    await connection.page.wait_for_load_state("load", timeout=10000)
+                except Exception:
+                    pass
+            else:
+                raise
 
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=timeout)
@@ -96,7 +110,16 @@ def reload(
 
     async def _reload():
         connection = await get_connection(session_id, headless)
-        await connection.page.reload(wait_until="networkidle")
+        try:
+            await connection.page.reload(wait_until="networkidle")
+        except Exception as e:
+            if "Timeout" in str(e):
+                try:
+                    await connection.page.wait_for_load_state("load", timeout=10000)
+                except Exception:
+                    pass
+            else:
+                raise
         output_json(
             {
                 "url": connection.page.url,

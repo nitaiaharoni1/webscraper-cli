@@ -1,6 +1,6 @@
 [project]
 name = "webscraper-cli"
-version = "2.0.0"
+version = "2.0.1"
 description = "Powerful CLI tool for website scraping, automation, and crawling"
 requires-python = ">=3.10"
 license = "MIT"
