@@ -22,6 +22,8 @@ def text(
     all: bool = typer.Option(False, "--all/--first", help="Extract from all matching elements"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table (overrides global)"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -42,6 +44,13 @@ def text(
         connection = await get_connection(session_id, headless, url)
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
 
         # Optimize bulk extraction with single JS call
         if all:
@@ -72,6 +81,8 @@ def links(
     absolute: bool = typer.Option(False, "--absolute/--relative", help="Convert relative URLs to absolute"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -83,6 +94,13 @@ def links(
         connection = await get_connection(session_id, headless, url)
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
 
         # Optimize with single JS call
         base_url = connection.page.url
@@ -120,6 +138,8 @@ def html(
     selector: Optional[str] = typer.Option(None, help="CSS selector (extracts innerHTML if specified)"),
     outer: bool = typer.Option(False, "--outer/--inner", help="Extract outerHTML instead of innerHTML"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -131,6 +151,13 @@ def html(
         connection = await get_connection(session_id, headless, url)
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
 
         if selector:
             element = connection.page.locator(selector).first
@@ -609,6 +636,8 @@ def strip(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -619,6 +648,13 @@ def strip(
         connection = await get_connection(session_id, headless, url, wait_until=wait_until)
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
         try:
             # Expand collapsible elements if requested
             if expand:
@@ -656,6 +692,8 @@ def markdown(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -667,6 +705,13 @@ def markdown(
         connection = await get_connection(session_id, headless, url, wait_until=wait_until)
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
         try:
             # Expand collapsible elements if requested
             if expand:
@@ -976,7 +1021,7 @@ def smart(
     import markdownify
 
     async def _smart():
-        connection = await get_connection(session_id, headless, url, wait_until="networkidle")
+        connection = await get_connection(session_id, headless, url, wait_until="load")
         try:
             # Step 1b: Wait for specific selector if provided (for SPA routes)
             if wait_for:

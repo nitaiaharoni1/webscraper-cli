@@ -35,6 +35,9 @@ def site(
     exclude: Optional[str] = typer.Option(None, help="URL pattern to exclude (glob pattern)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory for results"),
     concurrency: int = typer.Option(1, "--concurrency", "-c", help="Number of parallel requests [default: 1]"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector on each page before extracting links"),
+    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until text appears on each page before extracting links"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait on each page before extracting links (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
 ):
@@ -69,6 +72,16 @@ def site(
             slot = await slot_pool.get()
             try:
                 connection = await get_connection(f"{session_id or 'crawl'}-{slot}", headless, page_url)
+
+                if wait_for:
+                    await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+                if wait_for_text:
+                    await connection.page.wait_for_function(
+                        f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                        timeout=settings.timeout,
+                    )
+                if settle_time > 0:
+                    await connection.page.wait_for_timeout(settle_time)
 
                 result = {
                     "url": page_url,
