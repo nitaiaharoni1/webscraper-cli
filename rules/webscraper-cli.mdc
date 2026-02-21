@@ -19,6 +19,8 @@ Install: `brew install nitaiaharoni1/tools/webscraper-cli`
 --format json|csv|plain|table
 --timeout <ms>           Default: 30000
 --verbose / --quiet
+--proxy <url>            Proxy server (http://, socks5://)
+--user-agent <string>    Custom User-Agent
 ```
 
 ## Navigation
@@ -34,6 +36,12 @@ webscraper navigate back|forward|reload
 webscraper text "selector" --url "URL" --all --format plain
 webscraper extract links|images|table|html|attr|count --url "URL"
 webscraper extract attr "a" "href" --all --format csv
+webscraper extract forms --url "URL"           # Discover form fields + IDs
+webscraper extract meta|schema|info --url "URL"
+webscraper extract markdown|strip --url "URL"
+webscraper extract xpath "//div/@attr" --url "URL"
+webscraper extract regex "\d+" --url "URL"
+webscraper extract smart --url "URL"
 ```
 
 ## Interactions
@@ -41,25 +49,18 @@ webscraper extract attr "a" "href" --all --format csv
 ```bash
 webscraper click "selector"
 webscraper interact type-text "input" "value"
-webscraper interact select|check|uncheck|hover|focus|drag|scroll|upload|press
-webscraper form fill "form" --data '{"field":"value"}' --url "URL"
-webscraper form submit "form"
+webscraper interact select|check|uncheck|hover|focus|drag|scroll|upload|press|keyboard|pinch
+webscraper interact fill-form "form" --data '{"field":"value"}' --url "URL"
+webscraper interact submit-form "form"
 ```
 
-## Content
-
-```bash
-webscraper content strip|markdown|meta|schema|forms --url "URL"
-webscraper content xpath "//div/@attr" --text
-webscraper content regex "\d+" --selector "body"
-```
-
-## Crawl & Scroll
+## Crawl & Pagination
 
 ```bash
 webscraper crawl site "URL" --depth 2 --extract "h1" --output data/
-webscraper scroll infinite --extract ".item" --max-items 100
-webscraper scroll paginate --next "a.next" --extract ".item" --max-pages 10
+webscraper crawl sitemap "URL" | crawl rss "URL"
+webscraper extract infinite --extract ".item" --max-items 100 --url "URL"
+webscraper extract paginate --next "a.next" --extract ".item" --max-pages 10 --url "URL"
 ```
 
 ## Batch
@@ -73,18 +74,19 @@ webscraper batch retry "navigate goto URL" --max-attempts 3
 ## Audits
 
 ```bash
-webscraper audit a11y|seo|security|links|images --url "URL"
-webscraper audit links --max-check 50
+webscraper audit a11y|seo|security|mixed|links|images|vitals|lighthouse|memory --url "URL"
 ```
 
-## Performance & Network
+## Network & API
 
 ```bash
-webscraper perf vitals|memory --url "URL"
-webscraper monitor console --filter "error"
 webscraper network intercept --block "**/*.png"
 webscraper network throttle --preset slow3g
+webscraper network auth --username "admin" --password "secret"
+webscraper network headers --action set --name "Authorization" --value "Bearer token"
 webscraper api fetch "URL" --method GET --navigate-to "URL"
+webscraper api har output.har --url "URL"
+webscraper api mock --pattern "*/api/*" --response '{"mocked":true}'
 ```
 
 ## Screenshots & Recording
@@ -92,6 +94,7 @@ webscraper api fetch "URL" --method GET --navigate-to "URL"
 ```bash
 webscraper capture page.png --url "URL" --full-page
 webscraper capture element.png --selector "h1"
+webscraper screenshot visual-diff img1.png img2.png --output diff.png
 webscraper record video-start --output-file /tmp/video.webm
 webscraper record video-stop
 ```
@@ -102,6 +105,15 @@ webscraper record video-stop
 webscraper emulate device "iPhone 14"
 webscraper emulate viewport --width 1920 --height 1080
 webscraper emulate geolocation --lat 40.71 --lon -74.00
+webscraper emulate dark-mode|reduced-motion|print-preview|contrast --url "URL"
+```
+
+## Proxy & User-Agent
+
+```bash
+webscraper --proxy "http://proxy:8080" goto "URL"
+webscraper --user-agent "MyBot/2.0" text "h1" --url "URL"
+webscraper --proxy "socks5://proxy:1080" --user-agent "Mozilla/5.0 ..." --headless extract links --url "URL"
 ```
 
 ## Cleanup

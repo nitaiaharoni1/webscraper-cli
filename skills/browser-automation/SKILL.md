@@ -14,7 +14,6 @@ The user wants to:
 - Fill out and submit a form
 - Click buttons or specific elements
 - Hover, focus, or drag-and-drop elements
-- Assert that an element exists on the page
 - Perform multi-step navigation while keeping the browser open
 
 ## Workflow
@@ -29,21 +28,30 @@ The user wants to:
    webscraper wait selector "input[name=email]"
    ```
 
-3. **Interactions**: Use `interact type-text`, `click`, or `form fill`.
+3. **Recon**: Discover form fields before interacting.
+   ```bash
+   webscraper extract forms
+   ```
+
+4. **Interactions**: Use `interact type-text`, `click`, or `interact fill-form`.
    ```bash
    webscraper interact type-text "input[name=email]" "user@example.com"
    webscraper interact type-text "input[name=password]" "password123"
    webscraper click "button[type=submit]"
    ```
 
-4. **Verify and Capture**: Assert the success of the action and optionally take a screenshot.
+5. **Verify and Capture**: Check the result and optionally take a screenshot.
    ```bash
-   webscraper assert exists ".dashboard"
+   webscraper extract text ".dashboard"
    webscraper capture dashboard.png
+   ```
+
+6. **Proxy/Auth**: Use global options for restricted sites.
+   ```bash
+   webscraper --proxy "http://proxy:8080" --user-agent "Mozilla/5.0 ..." goto "URL"
    ```
 
 ## Output
 
 - Interaction status (stdout)
-- Confirmation of assertions
 - Saved files (if using `capture` or `record`)

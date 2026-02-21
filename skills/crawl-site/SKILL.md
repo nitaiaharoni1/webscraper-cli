@@ -15,6 +15,7 @@ The user wants to:
 - Extract results from a page with infinite scroll
 - Automatically click "Next" buttons to paginate through results
 - Process multiple URLs in parallel (concurrency)
+- Parse sitemaps or RSS feeds
 
 ## Workflow
 
@@ -23,19 +24,30 @@ The user wants to:
    webscraper crawl site "https://example.com" --depth 2 --extract "h1"
    ```
 
-2. **Infinite Scroll**: Use `scroll infinite` for pages that load content as you scroll down.
+2. **Sitemap/RSS**: Parse structured feeds directly.
    ```bash
-   webscraper scroll infinite --url "https://example.com/gallery" --extract ".item" --max-items 100
+   webscraper crawl sitemap "https://example.com/sitemap.xml"
+   webscraper crawl rss "https://example.com/feed.xml"
    ```
 
-3. **Auto-Pagination**: Use `scroll paginate` to click a "Next" button repeatedly.
+3. **Infinite Scroll**: Use `extract infinite` for pages that load content as you scroll down.
    ```bash
-   webscraper scroll paginate --url "https://example.com/blog" --next "a.next" --extract "h2" --max-pages 10
+   webscraper extract infinite --url "https://example.com/gallery" --extract ".item" --max-items 100
    ```
 
-4. **Batch Processing**: Use `batch urls` with a file containing many URLs to scrape them all at once.
+4. **Auto-Pagination**: Use `extract paginate` to click a "Next" button repeatedly.
+   ```bash
+   webscraper extract paginate --url "https://example.com/blog" --next "a.next" --extract "h2" --max-pages 10
+   ```
+
+5. **Batch Processing**: Use `batch urls` with a file containing many URLs to scrape them all at once.
    ```bash
    webscraper batch urls urls.txt --extract "h1" --concurrency 5
+   ```
+
+6. **With Proxy**: Use proxy for large crawls to avoid rate limiting.
+   ```bash
+   webscraper --proxy "http://proxy:8080" crawl site "URL" --depth 3
    ```
 
 ## Output

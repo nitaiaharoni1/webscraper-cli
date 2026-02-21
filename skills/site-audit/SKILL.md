@@ -14,15 +14,16 @@ The user wants to:
 - Analyze SEO metadata (titles, descriptions, meta tags)
 - Verify security headers
 - Find and report broken links on a site
-- Monitor page performance (vitals, memory)
-- Highlight specific elements for debugging
+- Monitor page performance (Core Web Vitals, memory)
+- Check for mixed content issues
 
 ## Workflow
 
-1. **Audit Specific Categories**: Use `webscraper audit` followed by the category (`a11y`, `seo`, `security`, `links`, or `images`).
+1. **Audit Specific Categories**: Use `webscraper audit` followed by the category.
    ```bash
    webscraper audit a11y --url "https://example.com"
    webscraper audit seo --url "https://example.com"
+   webscraper audit security --url "https://example.com"
    ```
 
 2. **Broken Link Check**: Use `audit links` to find 404s and other dead links.
@@ -30,19 +31,37 @@ The user wants to:
    webscraper audit links --url "https://example.com" --max-check 50
    ```
 
-3. **Performance Monitoring**: Use `perf vitals` or `perf memory` to check page speed and resources.
+3. **Performance**: Use `audit vitals` or `audit memory` to check page speed and resources.
    ```bash
-   webscraper perf vitals --url "https://example.com"
+   webscraper audit vitals --url "https://example.com"
+   webscraper audit memory --url "https://example.com"
    ```
 
-4. **Visual Monitoring**: Use `monitor console` to catch browser logs or `monitor highlight` to see specific elements visually in the browser.
+4. **Full Audit**: Run multiple audit types on the same URL.
    ```bash
-   webscraper monitor console --filter "error" --url "https://example.com"
+   webscraper audit a11y --url "URL"
+   webscraper audit seo --url "URL"
+   webscraper audit security --url "URL"
+   webscraper audit links --url "URL"
+   webscraper audit images --url "URL"
+   webscraper audit mixed --url "URL"
+   webscraper audit lighthouse --url "URL"
    ```
+
+## Available Audit Commands
+
+- `audit a11y` -- Accessibility violations
+- `audit seo` -- SEO metadata analysis
+- `audit security` -- Security headers check
+- `audit mixed` -- Mixed content detection
+- `audit links` -- Broken link finder
+- `audit images` -- Image optimization check
+- `audit vitals` -- Core Web Vitals
+- `audit lighthouse` -- Lighthouse-style audit
+- `audit memory` -- Memory usage analysis
 
 ## Output
 
 - Detailed audit reports (JSON, CSV, or plain text)
 - Performance metrics (Core Web Vitals)
 - List of broken links with source/target URLs
-- Error and warning logs

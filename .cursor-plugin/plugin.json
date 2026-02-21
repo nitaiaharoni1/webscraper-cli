@@ -1,8 +1,8 @@
 {
   "name": "webscraper-cli",
   "displayName": "Web Scraper CLI",
-  "version": "1.0.0",
-  "description": "Web scraping and browser automation workflows powered by webscraper-cli and Playwright. Covers data extraction, browser interactions, site crawling, and audits (accessibility, SEO, security, broken links).",
+  "version": "2.0.0",
+  "description": "Web scraping and browser automation workflows powered by webscraper-cli and Playwright. 112 commands across 19 categories covering data extraction, browser interactions, site crawling, audits, proxy/user-agent support, and more.",
   "author": {
     "name": "Nitai Aharoni",
     "email": "nitaiaharoni1@gmail.com"
@@ -17,7 +17,9 @@
     "browser-automation",
     "playwright",
     "crawling",
-    "data-extraction"
+    "data-extraction",
+    "proxy",
+    "audit"
   ],
   "category": "developer-tools",
   "tags": [

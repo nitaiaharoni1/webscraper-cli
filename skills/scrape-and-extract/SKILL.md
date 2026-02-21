@@ -16,6 +16,7 @@ The user wants to:
 - Extract table data into JSON or CSV
 - Pull specific attributes like `href`, `src`, or `data-*`
 - Get clean Markdown or stripped text from a page
+- Extract structured data (JSON-LD, metadata, forms)
 
 ## Workflow
 
@@ -34,13 +35,22 @@ The user wants to:
    webscraper batch selectors "h1,p,a" --url "https://example.com"
    ```
 
-4. **Structured Content**: Use `content` commands for specialized extractions like Markdown or Schema.org data.
+4. **Structured Content**: Use `extract` subcommands for specialized extractions.
    ```bash
-   webscraper content markdown --url "https://example.com"
-   webscraper content schema --url "https://example.com"
+   webscraper extract markdown --url "https://example.com"
+   webscraper extract schema --url "https://example.com"
+   webscraper extract forms --url "https://example.com"
+   webscraper extract meta --url "https://example.com"
+   webscraper extract xpath "//div/@class" --url "https://example.com"
+   webscraper extract regex "\d{3}-\d{4}" --url "https://example.com"
+   ```
+
+5. **Proxy/User-Agent**: Use global options for sites that block default requests.
+   ```bash
+   webscraper --user-agent "MyBot/2.0" --proxy "http://proxy:8080" extract links --url "URL"
    ```
 
 ## Output
 
 - Extracted data in the requested format (stdout)
-- Error message if selectors are not found or navigation fails
+- Error message with suggestion if selectors are not found or navigation fails
