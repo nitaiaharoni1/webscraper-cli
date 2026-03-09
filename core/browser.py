@@ -341,22 +341,33 @@ class BrowserManager:
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
-        self._cleanup_temp()
-
-    def _cleanup_temp(self):
-        """Remove temporary user data directories and stale port file."""
-        for temp_dir in self._temp_dirs:
+        # Kill persistent browser if we launched it
+        if self._persistent_process and self._persistent_process.poll() is None:
+            self._persistent_process.terminate()
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                self._persistent_process.wait(timeout=5)
             except Exception:
                 pass
-        self._temp_dirs.clear()
+        self._cleanup_temp()
+        # Remove port file since browser is now intentionally closed
         try:
             os.remove(BROWSER_PORT_FILE)
         except FileNotFoundError:
             pass
         except Exception:
             pass
+
+    def _cleanup_temp(self):
+        """Remove temporary user data directories only if browser is no longer running."""
+        # Only clean up if the persistent browser we launched is dead
+        if self._persistent_process and self._persistent_process.poll() is None:
+            return  # Browser still running — leave everything intact
+        for temp_dir in self._temp_dirs:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+        self._temp_dirs.clear()
 
 
 # Global browser manager instance
