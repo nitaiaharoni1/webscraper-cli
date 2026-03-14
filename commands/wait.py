@@ -78,12 +78,26 @@ def idle(
     async def _wait_idle():
         connection = await get_connection(session_id, headless)
 
-        if url:
-            await connection.page.goto(url, wait_until="networkidle", timeout=timeout)
-        else:
-            await connection.page.wait_for_load_state("networkidle", timeout=timeout)
+        fell_back = False
+        try:
+            if url:
+                await connection.page.goto(url, wait_until="networkidle", timeout=timeout)
+            else:
+                await connection.page.wait_for_load_state("networkidle", timeout=timeout)
+        except Exception as e:
+            if "Timeout" in str(e):
+                fell_back = True
+                try:
+                    await connection.page.wait_for_load_state("load", timeout=10000)
+                except Exception:
+                    pass
+            else:
+                raise
 
-        output_json({"message": "Network is idle", "url": connection.page.url})
+        result = {"message": "Network is idle", "url": connection.page.url}
+        if fell_back:
+            result["warning"] = "networkidle timed out, fell back to load state"
+        output_json(result)
 
     run_async(_wait_idle())
 

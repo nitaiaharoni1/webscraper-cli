@@ -162,10 +162,12 @@ def click(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     button: str = typer.Option("left", help="Mouse button: left, right, middle"),
     double: bool = typer.Option(False, "--double/--single", help="Perform double click"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after click"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after click (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
 ):
     """Click an element."""
-    interact.click(selector, url, button, double, session_id, settings.headless)
+    interact.click(selector, url, button, double, wait_for, settle_time, session_id, settings.headless)
 
 
 @app.command()
@@ -177,7 +179,7 @@ def text(
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
 ):
     """Extract text from elements."""
-    extract.text(selector, url, all, format or settings.format, session_id, settings.headless)
+    extract.text(selector, url, all, format or settings.format, session_id=session_id, headless=settings.headless)
 
 
 @app.command()

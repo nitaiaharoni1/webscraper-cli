@@ -22,8 +22,12 @@ def text(
     all: bool = typer.Option(False, "--all/--first", help="Extract from all matching elements"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table (overrides global)"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
-    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
-    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -81,8 +85,12 @@ def links(
     absolute: bool = typer.Option(False, "--absolute/--relative", help="Convert relative URLs to absolute"),
     format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
-    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
-    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -138,8 +146,12 @@ def html(
     selector: Optional[str] = typer.Option(None, help="CSS selector (extracts innerHTML if specified)"),
     outer: bool = typer.Option(False, "--outer/--inner", help="Extract outerHTML instead of innerHTML"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
-    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
-    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -496,7 +508,16 @@ def paginate(
 
                     # Click next button
                     await next_button.click()
-                    await connection.page.wait_for_load_state("networkidle", timeout=settings.timeout)
+                    try:
+                        await connection.page.wait_for_load_state("networkidle", timeout=settings.timeout)
+                    except Exception as e:
+                        if "Timeout" in str(e):
+                            try:
+                                await connection.page.wait_for_load_state("load", timeout=10000)
+                            except Exception:
+                                pass
+                        else:
+                            raise
 
                     page += 1
                     progress.update(task, advance=1)
@@ -636,8 +657,12 @@ def strip(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
-    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
-    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -692,8 +717,12 @@ def markdown(
         "domcontentloaded", "--wait-until", "-w", help="Wait until: domcontentloaded, load, networkidle, commit"
     ),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
-    wait_for_text: Optional[str] = typer.Option(None, "--wait-for-text", help="Wait until this text appears in the page before extracting"),
-    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     expand: bool = typer.Option(False, "--expand", "-e", help="Expand all collapsible elements before extraction"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
@@ -908,6 +937,13 @@ def regex(
 @app.command()
 def forms(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears in the page before extracting"
+    ),
+    settle_time: int = typer.Option(
+        0, "--settle-time", help="Extra ms to wait after page load before extracting (useful for SPAs)"
+    ),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
 ):
@@ -915,40 +951,123 @@ def forms(
 
     async def _forms():
         connection = await get_connection(session_id, headless, url)
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
         try:
             forms_data = await connection.page.evaluate("""
                 () => {
                     const forms = [];
-                    document.querySelectorAll('form').forEach((form, index) => {
-                        const formData = {
-                            index: index,
+                    let index = 0;
+
+                    function extractFieldData(field) {
+                        const fd = {
+                            type: field.type || field.tagName.toLowerCase(),
+                            name: field.name || null,
+                            id: field.id || null,
+                            placeholder: field.placeholder || null,
+                            required: field.required || false,
+                            value: field.value || null
+                        };
+                        if (field.tagName === 'SELECT') {
+                            fd.options = Array.from(field.options).map(opt => ({
+                                value: opt.value,
+                                text: opt.text
+                            }));
+                        }
+                        return fd;
+                    }
+
+                    function extractFields(container) {
+                        const fields = [];
+                        container.querySelectorAll('input, textarea, select').forEach(field => {
+                            fields.push(extractFieldData(field));
+                        });
+                        return fields;
+                    }
+
+                    // Phase A: Standard <form> elements
+                    document.querySelectorAll('form').forEach((form) => {
+                        forms.push({
+                            index: index++,
                             id: form.id || null,
                             name: form.name || null,
                             action: form.action || null,
                             method: form.method || 'get',
-                            fields: []
-                        };
-
-                        form.querySelectorAll('input, textarea, select').forEach(field => {
-                            const fieldData = {
-                                type: field.type || field.tagName.toLowerCase(),
-                                name: field.name || null,
-                                id: field.id || null,
-                                placeholder: field.placeholder || null,
-                                required: field.required || false,
-                                value: field.value || null
-                            };
-                            if (field.tagName === 'SELECT') {
-                                fieldData.options = Array.from(field.options).map(opt => ({
-                                    value: opt.value,
-                                    text: opt.text
-                                }));
-                            }
-                            formData.fields.push(fieldData);
+                            type: 'form',
+                            fields: extractFields(form)
                         });
-
-                        forms.push(formData);
                     });
+
+                    // Phase B: Elements with role="form" not inside a <form>
+                    document.querySelectorAll('[role="form"]').forEach((el) => {
+                        if (el.tagName.toLowerCase() === 'form') return;
+                        if (el.closest('form')) return;
+                        forms.push({
+                            index: index++,
+                            id: el.id || null,
+                            name: el.getAttribute('aria-label') || el.getAttribute('name') || null,
+                            action: null,
+                            method: null,
+                            type: 'role-form',
+                            selector: el.tagName.toLowerCase() + (el.id ? '#' + el.id : ''),
+                            fields: extractFields(el)
+                        });
+                    });
+
+                    // Phase C: Orphan inputs not inside any form or role="form" container
+                    const orphanInputs = Array.from(
+                        document.querySelectorAll('input, textarea, select')
+                    ).filter(el => !el.closest('form') && !el.closest('[role="form"]'));
+
+                    if (orphanInputs.length > 0) {
+                        // Walk up from each input to find the lowest ancestor that:
+                        // 1. Contains multiple orphan inputs (logical group), OR
+                        // 2. Is a semantic/named element (custom element, has id/aria-label, or non-div/span)
+                        // This handles SPAs where inputs sit inside custom elements like <shreddit-search>.
+                        function getGroupContainer(field, allOrphans) {
+                            let node = field.parentElement;
+                            while (node && node !== document.body && node !== document.documentElement) {
+                                const tag = node.tagName.toLowerCase();
+                                // Named container: has id, aria-label, or role
+                                if (node.id || node.getAttribute('aria-label') || node.getAttribute('role')) return node;
+                                // Semantic container: not a generic div/span (e.g. custom element, section, fieldset)
+                                if (tag !== 'div' && tag !== 'span') return node;
+                                // Shared container: this ancestor contains more than one orphan input
+                                if (allOrphans.filter(f => node.contains(f)).length > 1) return node;
+                                node = node.parentElement;
+                            }
+                            return field.parentElement || field;
+                        }
+
+                        const containers = new Map();
+                        orphanInputs.forEach(field => {
+                            const container = getGroupContainer(field, orphanInputs);
+                            if (!containers.has(container)) containers.set(container, new Set());
+                            containers.get(container).add(field);
+                        });
+                        containers.forEach((fieldSet, container) => {
+                            const tagName = container.tagName.toLowerCase();
+                            const selector = tagName + (container.id ? '#' + container.id : (container.className ? '.' + container.className.trim().split(/ +/)[0] : ''));
+                            forms.push({
+                                index: index++,
+                                id: container.id || null,
+                                name: container.getAttribute('aria-label') || container.getAttribute('name') || null,
+                                action: null,
+                                method: null,
+                                type: 'implicit',
+                                selector: selector,
+                                fields: Array.from(fieldSet).map(extractFieldData)
+                            });
+                        });
+                    }
+
                     return forms;
                 }
             """)

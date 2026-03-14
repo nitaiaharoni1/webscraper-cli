@@ -19,6 +19,8 @@ def click(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     button: str = typer.Option("left", help="Mouse button: left, right, middle"),
     double: bool = typer.Option(False, "--double/--single", help="Perform double click"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after click"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after click (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -35,6 +37,11 @@ def click(
             await locator.dblclick(button=button)
         else:
             await locator.click(button=button)
+
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
 
         output_json({"message": f"Clicked {selector}"})
 
@@ -464,7 +471,16 @@ def submit_form(
             await form_locator.evaluate("form => form.submit()")
 
             # Wait for navigation
-            await connection.page.wait_for_load_state("networkidle", timeout=settings.timeout)
+            try:
+                await connection.page.wait_for_load_state("networkidle", timeout=settings.timeout)
+            except Exception as e:
+                if "Timeout" in str(e):
+                    try:
+                        await connection.page.wait_for_load_state("load", timeout=10000)
+                    except Exception:
+                        pass
+                else:
+                    raise
 
             output_json(
                 {"message": "Form submitted", "url": connection.page.url, "title": await connection.page.title()}
