@@ -6,7 +6,9 @@ import typer
 from rich.console import Console
 
 from core.async_command import get_connection, run_async
+from core.browser import save_session_state
 from core.output import output_json
+from core.settings import settings
 
 console = Console(stderr=True)
 
@@ -49,6 +51,11 @@ def goto(
 
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=timeout)
+
+        # Persist session state so subsequent headless commands can restore it
+        effective_headless = headless if headless is not None else settings.headless
+        if session_id or effective_headless:
+            await save_session_state(connection, session_id or "default")
 
         output_json(
             {

@@ -209,6 +209,7 @@ class BrowserManager:
         session_id: Optional[str] = None,
         proxy: Optional[str] = None,
         user_agent: Optional[str] = None,
+        extra_context_options: Optional[Dict[str, Any]] = None,
     ) -> BrowserConnection:
         """Connect to or launch a browser."""
         pw = await self._get_playwright()
@@ -218,10 +219,12 @@ class BrowserManager:
         context: BrowserContext
         process: Optional[subprocess.Popen] = None
 
-        # Build context options for user-agent
+        # Build context options for user-agent and any extras (e.g. storage_state)
         context_options = {}
         if user_agent:
             context_options["user_agent"] = user_agent
+        if extra_context_options:
+            context_options.update(extra_context_options)
 
         if mode == "persistent":
             # Launch browser separately so it stays open
@@ -433,14 +436,16 @@ async def get_or_create_connection(
     if connection:
         return connection
 
-    # Load persisted state for named sessions (not the anonymous "default")
-    saved_state = load_session_state(effective_session_id) if session_id else None
+    # Load persisted state for named sessions and headless default sessions.
+    # Headless mode launches a fresh browser per invocation, so disk state
+    # is the only way to preserve continuity between commands.
+    saved_state = load_session_state(effective_session_id) if (session_id or headless) else None
 
-    # Build context options — include storage state for headless sessions
+    # Build context options — include storage state when available
     context_options: Dict[str, Any] = {}
     if user_agent:
         context_options["user_agent"] = user_agent
-    if saved_state and headless and saved_state.get("storage_state"):
+    if saved_state and saved_state.get("storage_state"):
         context_options["storage_state"] = saved_state["storage_state"]
 
     # Use persistent mode for headed, fresh for headless
@@ -452,12 +457,18 @@ async def get_or_create_connection(
         session_id=effective_session_id,
         proxy=proxy,
         user_agent=user_agent,
+        extra_context_options=context_options if context_options else None,
     )
 
     # Restore the last visited URL for the session
     if saved_state and saved_state.get("url") and saved_state["url"] not in ("about:blank", "chrome://new-tab-page/"):
         try:
             await connection.page.goto(saved_state["url"], wait_until="load", timeout=30000)
+            # Wait for any post-load redirects to settle
+            try:
+                await connection.page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
         except Exception:
             pass  # Restoration is best-effort
 

@@ -7,10 +7,22 @@ from typing import Optional
 import typer
 
 from core.async_command import get_connection, run_async
+from core.browser import save_session_state
 from core.output import output_json
 from core.settings import settings
 
 app = typer.Typer()
+
+
+async def _persist_session(connection, session_id, headless):
+    """Save session state for headless or named sessions after interaction."""
+    effective_headless = headless if headless is not None else settings.headless
+    if session_id or effective_headless:
+        try:
+            await connection.page.wait_for_load_state("load", timeout=5000)
+        except Exception:
+            pass
+        await save_session_state(connection, session_id or "default")
 
 
 @app.command()
@@ -25,6 +37,14 @@ def click(
     by_role: Optional[str] = typer.Option(None, "--by-role", help="Click element by ARIA role (e.g. button, link)"),
     by_name: Optional[str] = typer.Option(None, "--name", help="Accessible name filter for --by-role"),
     by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Click element by data-testid attribute"),
+    force: bool = typer.Option(
+        False, "--force", help="Force click even if element is not visible (bypasses actionability checks)"
+    ),
+    focus_first: Optional[str] = typer.Option(
+        None,
+        "--focus-first",
+        help="Focus this selector before clicking (useful for hidden buttons that appear on focus)",
+    ),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -62,16 +82,44 @@ def click(
             output_json({"error": "Provide a CSS selector or one of --by-text, --by-role, --by-test-id"})
             return
 
-        if double:
-            await locator.dblclick()
-        else:
-            await locator.click()
+        click_kwargs: dict = {}
+        if force:
+            click_kwargs["force"] = True
+
+        if focus_first:
+            try:
+                await connection.page.locator(focus_first).first.focus()
+                import asyncio as _aio
+
+                await _aio.sleep(0.3)
+            except Exception:
+                pass
+
+        try:
+            if double:
+                await locator.dblclick(**click_kwargs)
+            else:
+                await locator.click(**click_kwargs)
+        except Exception:
+            if not force:
+                # Auto-retry with force=True when element exists but isn't actionable
+                # (common for dynamically revealed buttons, search UIs, etc.)
+                try:
+                    if double:
+                        await locator.dblclick(force=True)
+                    else:
+                        await locator.click(force=True)
+                except Exception:
+                    raise
+            else:
+                raise
 
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
         if settle_time > 0:
             await connection.page.wait_for_timeout(settle_time)
 
+        await _persist_session(connection, session_id, headless)
         output_json({"message": f"Clicked {label}"})
 
     run_async(_click())
@@ -87,6 +135,9 @@ def type_text(
     by_label: Optional[str] = typer.Option(None, "--by-label", help="Target input by associated <label> text"),
     by_placeholder: Optional[str] = typer.Option(None, "--by-placeholder", help="Target input by placeholder text"),
     by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Target input by data-testid attribute"),
+    submit: bool = typer.Option(False, "--submit", help="Press Enter after typing (submit form)"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after typing/submit"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after typing/submit"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
@@ -100,7 +151,7 @@ def type_text(
     Examples:
         cli.py interact type-text "#search" "Playwright"
         cli.py interact type-text --by-label "Email" "user@example.com"
-        cli.py interact type-text --by-placeholder "Search..." "query"
+        cli.py interact type-text --by-placeholder "Search..." "query" --submit
         cli.py interact type-text --by-test-id "email-input" "user@example.com"
     """
 
@@ -131,7 +182,31 @@ def type_text(
         else:
             await locator.fill(text)
 
-        output_json({"message": f"Typed text into {label}"})
+        if submit:
+            await locator.press("Enter")
+            # Wait for navigation after submit
+            try:
+                await connection.page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception as e:
+                if "Timeout" in str(e):
+                    try:
+                        await connection.page.wait_for_load_state("load", timeout=10000)
+                    except Exception:
+                        pass
+                else:
+                    raise
+
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
+
+        await _persist_session(connection, session_id, headless)
+
+        msg = f"Typed text into {label}"
+        if submit:
+            msg += " and pressed Enter"
+        output_json({"message": msg})
 
     run_async(_type())
 
@@ -267,6 +342,7 @@ def press(
         connection = await get_connection(session_id, headless, url)
 
         await connection.page.keyboard.press(key)
+        await _persist_session(connection, session_id, headless)
         output_json({"message": f"Pressed {key}"})
 
     run_async(_press())
@@ -442,6 +518,11 @@ def fill_form(
     selector: str = typer.Argument(..., help="CSS selector of form"),
     data: str = typer.Option(..., "--data", "-d", help="JSON string or path to JSON/YAML file with form data"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
+    submit: bool = typer.Option(
+        False, "--submit", help="Submit the form after filling (clicks submit button or calls form.submit())"
+    ),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after submit"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after submit"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(None, "--headless/--headed", help="Run in headless mode"),
 ):
@@ -471,6 +552,12 @@ def fill_form(
             if form_data is None:
                 output_json({"error": f"Invalid data: not valid JSON and file not found: {data}"})
                 return
+
+            # Ensure page is fully loaded before querying DOM for labels
+            try:
+                await connection.page.wait_for_load_state("load", timeout=10000)
+            except Exception:
+                pass
 
             form_locator = connection.page.locator(selector).first
 
@@ -526,7 +613,46 @@ def fill_form(
                 if not filled_field:
                     output_json({"warning": f"Field {field_name} not found"})
 
-            output_json({"message": f"Filled {len(filled)} fields", "fields": filled})
+            result = {"message": f"Filled {len(filled)} fields", "fields": filled}
+
+            if submit and filled:
+                # Try clicking a submit button first, then fall back to form.submit()
+                submitted = False
+                for submit_sel in [
+                    'button[type="submit"]',
+                    'input[type="submit"]',
+                    "button:not([type])",
+                ]:
+                    try:
+                        btn = form_locator.locator(submit_sel).first
+                        if await btn.count() > 0:
+                            await btn.click()
+                            submitted = True
+                            break
+                    except Exception:
+                        continue
+                if not submitted:
+                    await form_locator.evaluate("form => form.submit()")
+                # Wait for navigation
+                try:
+                    await connection.page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception as e:
+                    if "Timeout" in str(e):
+                        try:
+                            await connection.page.wait_for_load_state("load", timeout=10000)
+                        except Exception:
+                            pass
+                    else:
+                        raise
+                if wait_for:
+                    await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+                if settle_time > 0:
+                    await connection.page.wait_for_timeout(settle_time)
+                result["submitted"] = True
+                result["url"] = connection.page.url
+
+            await _persist_session(connection, session_id, headless)
+            output_json(result)
         except Exception as e:
             output_json({"error": str(e)})
 

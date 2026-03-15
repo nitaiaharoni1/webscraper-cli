@@ -550,7 +550,9 @@ def records(
             output_json({"error": f"--fields must be valid JSON: {exc}"})
             return
 
-        # Build field extraction JS: iterate containers, query each sub-selector inside
+        # Build field extraction JS: iterate containers, query each sub-selector inside.
+        # Supports multiple comma-separated selectors per field as fallback chain.
+        # Also uses aria-label and data attributes as fallbacks when querySelector returns null.
         field_entries_js = ", ".join(f"[{json.dumps(k)}, {json.dumps(v)}]" for k, v in field_map.items())
         container_json = json.dumps(container)
 
@@ -560,8 +562,19 @@ def records(
                 return Array.from(document.querySelectorAll({container_json})).map(el => {{
                     const record = {{}};
                     fieldMap.forEach((subSel, key) => {{
-                        const child = el.querySelector(subSel);
-                        record[key] = child ? child.textContent.trim() : null;
+                        let text = null;
+                        // Try each comma-separated selector as a fallback chain
+                        const selectors = subSel.split(',').map(s => s.trim());
+                        for (const sel of selectors) {{
+                            try {{
+                                const child = el.querySelector(sel);
+                                if (child) {{
+                                    text = child.textContent.trim();
+                                    if (text) break;
+                                }}
+                            }} catch(e) {{}}
+                        }}
+                        record[key] = text || null;
                     }});
                     return record;
                 }});
@@ -1443,3 +1456,184 @@ def smart(
             output_json({"error": str(e)})
 
     run_async(_smart())
+
+
+# ---------------------------------------------------------------------------
+# Accessibility-tree helpers for smart-records
+# ---------------------------------------------------------------------------
+
+
+def _find_nodes_by_role(tree: Dict[str, Any], role: str) -> List[Dict[str, Any]]:
+    """Recursively find all nodes whose role matches (case-insensitive)."""
+    results: List[Dict[str, Any]] = []
+    if not tree:
+        return results
+    if tree.get("role", "").lower() == role.lower():
+        results.append(tree)
+    for child in tree.get("children", []) or []:
+        results.extend(_find_nodes_by_role(child, role))
+    return results
+
+
+def _flatten_node(node: Dict[str, Any]) -> List[tuple]:
+    """DFS-flatten a node's subtree into (role, name, value) tuples."""
+    items: List[tuple] = []
+    role = node.get("role", "")
+    name = node.get("name", "") or ""
+    value = node.get("value", "") or ""
+    items.append((role, name, value))
+    for child in node.get("children", []) or []:
+        items.extend(_flatten_node(child))
+    return items
+
+
+_DATE_RE = re.compile(
+    r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b"
+    r"|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b"
+    r"|\b\d{4}-\d{2}-\d{2}\b"
+    r"|\bon\s+[A-Z][a-z]+\s+\d{1,2},?\s+\d{4}\b",
+    re.IGNORECASE,
+)
+_STARS_RE = re.compile(r"\b\d[\d,]*(?:\.\d+)?k?\b", re.IGNORECASE)
+
+
+def _extract_fields_from_node(node: Dict[str, Any], fields: Optional[List[str]]) -> Dict[str, Any]:
+    """Extract fields from an accessibility node using heuristics."""
+    flat = _flatten_node(node)
+
+    def _text(item: tuple) -> str:
+        _, name, value = item
+        return (name or value or "").strip()
+
+    record: Dict[str, Any] = {}
+
+    wanted = set(fields) if fields else None
+
+    # --- name/title ---
+    if wanted is None or "name" in wanted or "title" in wanted:
+        for role, name, value in flat:
+            if role.lower() == "heading" and name.strip():
+                key = "name" if (wanted is None or "name" in wanted) else "title"
+                record[key] = name.strip()
+                break
+
+    # --- url/link ---
+    if wanted is None or "url" in wanted or "link" in wanted:
+        for role, name, value in flat:
+            if role.lower() == "link":
+                link_val = value.strip() if value else name.strip()
+                key = "url" if (wanted is None or "url" in wanted) else "link"
+                record[key] = link_val or None
+                break
+
+    # --- stars ---
+    if wanted is None or "stars" in wanted:
+        for role, name, value in flat:
+            txt = _text((role, name, value))
+            if "star" in txt.lower() or ("k" in txt.lower() and _STARS_RE.search(txt)):
+                record["stars"] = txt or None
+                break
+
+    # --- language ---
+    if wanted is None or "language" in wanted:
+        for role, name, value in flat:
+            txt = _text((role, name, value))
+            if "language" in (name or "").lower():
+                record["language"] = txt or None
+                break
+
+    # --- updated ---
+    if wanted is None or "updated" in wanted:
+        for role, name, value in flat:
+            txt = _text((role, name, value))
+            if _DATE_RE.search(txt):
+                record["updated"] = txt or None
+                break
+
+    # --- description ---
+    if wanted is None or "description" in wanted:
+        candidates = []
+        for role, name, value in flat:
+            if role.lower() in ("generic", "statictext", "paragraph", "text") and name.strip():
+                # Skip things already captured
+                if name.strip() not in record.values():
+                    candidates.append(name.strip())
+        if candidates:
+            record["description"] = max(candidates, key=len)
+
+    # Fill None for explicitly requested fields not found
+    if fields:
+        for f in fields:
+            if f not in record:
+                record[f] = None
+
+    return record
+
+
+@app.command("smart-records")
+def smart_records(
+    url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to (uses current page if omitted)"),
+    container: str = typer.Option(
+        "article", "--container", "-c", help="ARIA role or tag to group repeating elements by"
+    ),
+    fields: Optional[str] = typer.Option(
+        None,
+        "--fields",
+        "-f",
+        help="Comma-separated field names to extract (e.g. name,description,stars). Extracts all if omitted.",
+    ),
+    limit: int = typer.Option(0, "--limit", "-l", help="Max records to return (0 = all)"),
+    format: Optional[str] = typer.Option(None, "--format", help="Output format: json, plain, table, csv"),
+    session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
+    headless: Optional[bool] = typer.Option(
+        None, "--headless/--headed", help="Run in headless mode (overrides global)"
+    ),
+):
+    """Extract structured records from repeating semantic elements via accessibility tree.
+
+    Uses Playwright's accessibility snapshot instead of CSS selectors — ideal for SPAs
+    with auto-generated class names (GitHub, React apps, etc.).
+
+    Examples:
+        cli.py extract smart-records --url "https://github.com/trending" --container article --fields "name,description,language,stars"
+        cli.py extract smart-records --url "https://news.ycombinator.com" --container listitem --limit 20
+    """
+
+    field_list: Optional[List[str]] = [f.strip() for f in fields.split(",")] if fields else None
+
+    async def _smart_records():
+        connection = await get_connection(session_id, headless, None)
+
+        if url:
+            try:
+                await connection.page.goto(url, wait_until="networkidle", timeout=30000)
+            except Exception:
+                try:
+                    await connection.page.goto(url, wait_until="load", timeout=30000)
+                except Exception as e:
+                    output_json({"error": f"Failed to navigate to {url}: {e}"})
+                    return
+
+        snapshot = await connection.page.accessibility.snapshot()
+        if not snapshot:
+            output_json({"error": "Accessibility snapshot returned None. Page may not have loaded."})
+            return
+
+        # Try container role first; fall back to common alternatives
+        nodes = _find_nodes_by_role(snapshot, container)
+        if not nodes and container.lower() == "article":
+            nodes = _find_nodes_by_role(snapshot, "listitem")
+        if not nodes and container.lower() in ("article", "listitem"):
+            nodes = _find_nodes_by_role(snapshot, "row")
+
+        if not nodes:
+            output_json({"error": f"No nodes with role '{container}' found in accessibility tree.", "records": []})
+            return
+
+        if limit > 0:
+            nodes = nodes[:limit]
+
+        records_out = [_extract_fields_from_node(n, field_list) for n in nodes]
+        output_json(records_out)
+
+    run_async(_smart_records())

@@ -169,6 +169,7 @@ def click(
     by_role: Optional[str] = typer.Option(None, "--by-role", help="Click element by ARIA role (e.g. button, link)"),
     by_name: Optional[str] = typer.Option(None, "--name", help="Accessible name filter for --by-role"),
     by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Click element by data-testid attribute"),
+    force: bool = typer.Option(False, "--force", help="Force click even if element is not visible"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
 ):
     """Click an element by CSS selector or semantic locator."""
@@ -183,6 +184,7 @@ def click(
         by_role,
         by_name,
         by_test_id,
+        force,
         session_id,
         settings.headless,
     )

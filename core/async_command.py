@@ -68,9 +68,12 @@ async def get_connection(
             else:
                 raise NavigationError(url, str(e))
 
-        # Persist session state so the next CLI invocation can restore it
-        if session_id:
-            await save_session_state(connection, session_id)
+        # Persist session state so the next CLI invocation can restore it.
+        # Always save for headless (each invocation launches a fresh browser),
+        # and for named sessions (explicit state management).
+        effective_headless = headless if headless is not None else settings.headless
+        if session_id or effective_headless:
+            await save_session_state(connection, session_id or "default")
 
     return connection
 
