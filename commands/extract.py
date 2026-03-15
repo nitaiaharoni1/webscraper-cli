@@ -1459,33 +1459,8 @@ def smart(
 
 
 # ---------------------------------------------------------------------------
-# Accessibility-tree helpers for smart-records
+# Accessibility-tree helpers for smart-records (uses aria_snapshot YAML API)
 # ---------------------------------------------------------------------------
-
-
-def _find_nodes_by_role(tree: Dict[str, Any], role: str) -> List[Dict[str, Any]]:
-    """Recursively find all nodes whose role matches (case-insensitive)."""
-    results: List[Dict[str, Any]] = []
-    if not tree:
-        return results
-    if tree.get("role", "").lower() == role.lower():
-        results.append(tree)
-    for child in tree.get("children", []) or []:
-        results.extend(_find_nodes_by_role(child, role))
-    return results
-
-
-def _flatten_node(node: Dict[str, Any]) -> List[tuple]:
-    """DFS-flatten a node's subtree into (role, name, value) tuples."""
-    items: List[tuple] = []
-    role = node.get("role", "")
-    name = node.get("name", "") or ""
-    value = node.get("value", "") or ""
-    items.append((role, name, value))
-    for child in node.get("children", []) or []:
-        items.extend(_flatten_node(child))
-    return items
-
 
 _DATE_RE = re.compile(
     r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b"
@@ -1497,67 +1472,126 @@ _DATE_RE = re.compile(
 _STARS_RE = re.compile(r"\b\d[\d,]*(?:\.\d+)?k?\b", re.IGNORECASE)
 
 
-def _extract_fields_from_node(node: Dict[str, Any], fields: Optional[List[str]]) -> Dict[str, Any]:
-    """Extract fields from an accessibility node using heuristics."""
-    flat = _flatten_node(node)
+def _split_aria_blocks(snapshot: str, container: str) -> List[str]:
+    """Split ARIA snapshot YAML into per-container blocks."""
+    lines = snapshot.splitlines()
+    blocks: List[str] = []
+    current: List[str] = []
+    # Find lines that start a container (e.g. "- article:" or "  - article:")
+    container_pat = re.compile(r"^(\s*)- " + re.escape(container) + r"\b", re.IGNORECASE)
+    base_indent: Optional[int] = None
 
-    def _text(item: tuple) -> str:
-        _, name, value = item
-        return (name or value or "").strip()
+    for line in lines:
+        m = container_pat.match(line)
+        if m:
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
+            base_indent = len(m.group(1))
+        elif current and base_indent is not None:
+            # Continue block while indentation is deeper than base
+            stripped = line.lstrip()
+            if not stripped:
+                current.append(line)
+            else:
+                indent = len(line) - len(stripped)
+                if indent > base_indent:
+                    current.append(line)
+                else:
+                    # New sibling or parent — end this block
+                    blocks.append("\n".join(current))
+                    current = []
+                    base_indent = None
 
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _extract_fields_from_aria_block(block: str, fields: Optional[List[str]]) -> Dict[str, Any]:
+    """Extract fields from an ARIA snapshot YAML block using regex heuristics."""
     record: Dict[str, Any] = {}
-
     wanted = set(fields) if fields else None
 
-    # --- name/title ---
+    # Collect all text values from the block
+    texts: List[str] = []
+    for line in block.splitlines():
+        # Extract quoted strings: "some text"
+        for m in re.finditer(r'"([^"]+)"', line):
+            texts.append(m.group(1).strip())
+        # Extract unquoted values after ': '
+        m2 = re.match(r"\s+-\s+\w[^:]*:\s+(.+)", line)
+        if m2:
+            val = m2.group(1).strip().strip('"')
+            if val:
+                texts.append(val)
+
+    # --- name/title: first heading ---
     if wanted is None or "name" in wanted or "title" in wanted:
-        for role, name, value in flat:
-            if role.lower() == "heading" and name.strip():
-                key = "name" if (wanted is None or "name" in wanted) else "title"
-                record[key] = name.strip()
-                break
+        for line in block.splitlines():
+            if re.search(r"heading\s", line, re.IGNORECASE):
+                m = re.search(r'"([^"]+)"', line)
+                if m:
+                    key = "name" if (wanted is None or "name" in wanted) else "title"
+                    record[key] = m.group(1).strip()
+                    break
 
-    # --- url/link ---
+    # --- url/link: first link ---
     if wanted is None or "url" in wanted or "link" in wanted:
-        for role, name, value in flat:
-            if role.lower() == "link":
-                link_val = value.strip() if value else name.strip()
-                key = "url" if (wanted is None or "url" in wanted) else "link"
-                record[key] = link_val or None
-                break
+        for line in block.splitlines():
+            if re.match(r"\s+-\s+link\b", line, re.IGNORECASE):
+                m = re.search(r'"([^"]+)"', line)
+                if m:
+                    key = "url" if (wanted is None or "url" in wanted) else "link"
+                    record[key] = m.group(1).strip()
+                    break
 
-    # --- stars ---
+    # --- stars: text matching star pattern ---
     if wanted is None or "stars" in wanted:
-        for role, name, value in flat:
-            txt = _text((role, name, value))
-            if "star" in txt.lower() or ("k" in txt.lower() and _STARS_RE.search(txt)):
-                record["stars"] = txt or None
+        for txt in texts:
+            if "star" in txt.lower() and _STARS_RE.search(txt):
+                record["stars"] = txt
                 break
+        if "stars" not in record:
+            for txt in texts:
+                if re.match(r"^\d[\d,]*(?:\.\d+)?k?$", txt.strip(), re.IGNORECASE):
+                    record["stars"] = txt
+                    break
 
-    # --- language ---
+    # --- language: line with "language" label ---
     if wanted is None or "language" in wanted:
-        for role, name, value in flat:
-            txt = _text((role, name, value))
-            if "language" in (name or "").lower():
-                record["language"] = txt or None
-                break
+        for line in block.splitlines():
+            if "language" in line.lower():
+                m = re.search(r'"([^"]+)"', line)
+                if m:
+                    record["language"] = m.group(1).strip()
+                    break
+        if "language" not in record:
+            # plain text node right after programming language patterns
+            for line in block.splitlines():
+                m = re.match(r"\s+-\s+text:\s+(\S+)", line)
+                if m and not any(c in m.group(1) for c in [",", "/", "http", "@"]):
+                    val = m.group(1).strip()
+                    if re.match(r"^[A-Z][a-zA-Z+#]*$", val) and len(val) > 1:
+                        record["language"] = val
+                        break
 
-    # --- updated ---
+    # --- stars today / updated ---
     if wanted is None or "updated" in wanted:
-        for role, name, value in flat:
-            txt = _text((role, name, value))
-            if _DATE_RE.search(txt):
-                record["updated"] = txt or None
+        for txt in texts:
+            if "stars today" in txt.lower() or "today" in txt.lower():
+                record["updated"] = txt
                 break
+        if "updated" not in record:
+            for txt in texts:
+                if _DATE_RE.search(txt):
+                    record["updated"] = txt
+                    break
 
-    # --- description ---
+    # --- description: longest paragraph/generic text ---
     if wanted is None or "description" in wanted:
-        candidates = []
-        for role, name, value in flat:
-            if role.lower() in ("generic", "statictext", "paragraph", "text") and name.strip():
-                # Skip things already captured
-                if name.strip() not in record.values():
-                    candidates.append(name.strip())
+        captured = set(str(v) for v in record.values() if v)
+        candidates = [t for t in texts if len(t) > 30 and t not in captured]
         if candidates:
             record["description"] = max(candidates, key=len)
 
@@ -1614,26 +1648,26 @@ def smart_records(
                     output_json({"error": f"Failed to navigate to {url}: {e}"})
                     return
 
-        snapshot = await connection.page.accessibility.snapshot()
+        snapshot = await connection.page.locator("body").aria_snapshot()
         if not snapshot:
             output_json({"error": "Accessibility snapshot returned None. Page may not have loaded."})
             return
 
         # Try container role first; fall back to common alternatives
-        nodes = _find_nodes_by_role(snapshot, container)
-        if not nodes and container.lower() == "article":
-            nodes = _find_nodes_by_role(snapshot, "listitem")
-        if not nodes and container.lower() in ("article", "listitem"):
-            nodes = _find_nodes_by_role(snapshot, "row")
+        blocks = _split_aria_blocks(snapshot, container)
+        if not blocks and container.lower() == "article":
+            blocks = _split_aria_blocks(snapshot, "listitem")
+        if not blocks and container.lower() in ("article", "listitem"):
+            blocks = _split_aria_blocks(snapshot, "row")
 
-        if not nodes:
-            output_json({"error": f"No nodes with role '{container}' found in accessibility tree.", "records": []})
+        if not blocks:
+            output_json({"error": f"No '{container}' blocks found in accessibility snapshot.", "records": []})
             return
 
         if limit > 0:
-            nodes = nodes[:limit]
+            blocks = blocks[:limit]
 
-        records_out = [_extract_fields_from_node(n, field_list) for n in nodes]
+        records_out = [_extract_fields_from_aria_block(b, field_list) for b in blocks]
         output_json(records_out)
 
     run_async(_smart_records())
