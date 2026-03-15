@@ -287,53 +287,169 @@ def images(
     run_async(_extract_images())
 
 
+_TABLE_FALLBACK_SELECTORS = [
+    ".wikitable",
+    ".sortable",
+    ".dataframe",
+    "table.data",
+    '[role="table"]',
+    ".table",
+    "table[class]",
+    "table",
+]
+
+
+def _make_extract_table_js(selector: str) -> str:
+    """Build a self-contained IIFE that extracts one table by exact selector string."""
+    sel_json = json.dumps(selector)
+    return f"""
+        (() => {{
+            const table = document.querySelector({sel_json});
+            if (!table) return {{ error: 'Table not found' }};
+            const rows = Array.from(table.querySelectorAll('tr'));
+            if (!rows.length) return {{ headers: [], rows: [] }};
+            const headerNames = Array.from(rows[0].querySelectorAll('th, td'))
+                .map(c => c.textContent.trim());
+            const data = rows.slice(1).map(row => {{
+                const cells = Array.from(row.querySelectorAll('td'));
+                const rowData = {{}};
+                headerNames.forEach((h, i) => {{ rowData[h] = cells[i] ? cells[i].textContent.trim() : ''; }});
+                return rowData;
+            }});
+            return {{ headers: headerNames, rows: data }};
+        }})()
+    """
+
+
+def _make_extract_all_tables_js(selector: str) -> str:
+    """Build a self-contained IIFE that extracts every table matching selector."""
+    sel_json = json.dumps(selector)
+    return f"""
+        (() => {{
+            function extractOne(table) {{
+                const rows = Array.from(table.querySelectorAll('tr'));
+                if (!rows.length) return {{ headers: [], rows: [] }};
+                const headerNames = Array.from(rows[0].querySelectorAll('th, td'))
+                    .map(c => c.textContent.trim());
+                const data = rows.slice(1).map(row => {{
+                    const cells = Array.from(row.querySelectorAll('td'));
+                    const rowData = {{}};
+                    headerNames.forEach((h, i) => {{ rowData[h] = cells[i] ? cells[i].textContent.trim() : ''; }});
+                    return rowData;
+                }});
+                return {{ headers: headerNames, rows: data }};
+            }}
+            return Array.from(document.querySelectorAll({sel_json})).map(extractOne);
+        }})()
+    """
+
+
 @app.command()
 def table(
-    selector: str,
+    selector: Optional[str] = typer.Argument(None, help="CSS selector for table (auto-detects if omitted)"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     headers: Optional[str] = typer.Option(None, help='Comma-separated header names, or "auto" to detect'),
+    all: bool = typer.Option(False, "--all/--first", help="Extract all matching tables"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears before extracting"
+    ),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load (useful for SPAs)"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
     ),
 ):
-    """Extract table data as JSON."""
+    """Extract table data as JSON. Auto-detects tables if no selector is given.
+
+    When a selector is provided but matches nothing, falls back to auto-detection
+    and includes a note in the output. Use --all to extract every table on the page.
+
+    Examples:
+        cli.py extract table --url https://example.com
+        cli.py extract table "table.data" --url https://example.com
+        cli.py extract table --all --url https://en.wikipedia.org/wiki/Python_(programming_language)
+    """
 
     async def _extract_table():
         connection = await get_connection(session_id, headless, url)
 
-        # Extract table using JavaScript
-        table_data = await connection.page.evaluate(f"""
-            (() => {{
-                const table = document.querySelector('{selector}');
-                if (!table) return {{ error: 'Table not found' }};
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
 
-                const rows = Array.from(table.querySelectorAll('tr'));
-                const headerRow = rows[0];
-                const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
-                const headerNames = headerCells.map(cell => cell.textContent.trim());
+        if all:
+            effective_sel = selector or "table"
+            results = await connection.page.evaluate(_make_extract_all_tables_js(effective_sel))
+            if headers and headers != "auto":
+                header_list = [h.strip() for h in headers.split(",")]
+                for t in results:
+                    t["headers"] = header_list
+            output_json(results)
+            return
 
-                const dataRows = rows.slice(1);
-                const data = dataRows.map(row => {{
-                    const cells = Array.from(row.querySelectorAll('td'));
-                    const rowData = {{}};
-                    headerNames.forEach((header, index) => {{
-                        rowData[header] = cells[index] ? cells[index].textContent.trim() : '';
-                    }});
-                    return rowData;
-                }});
+        # --- Single table with fallback chain ---
+        def _has_content(t: Any) -> bool:
+            """A table result is useful only if it has at least one data row."""
+            return isinstance(t, dict) and "error" not in t and bool(t.get("rows"))
 
-                return {{
-                    headers: headerNames,
-                    rows: data
-                }};
-            }})()
-        """)
+        note = None
+        effective_sel = selector
+
+        if selector:
+            result = await connection.page.evaluate(_make_extract_table_js(selector))
+            if not _has_content(result):
+                # Provided selector matched nothing or yielded empty data — try fallbacks
+                for fallback in _TABLE_FALLBACK_SELECTORS:
+                    candidate = await connection.page.evaluate(_make_extract_table_js(fallback))
+                    if _has_content(candidate):
+                        note = f"Selector '{selector}' not found — used auto-detected '{fallback}' instead"
+                        effective_sel = fallback
+                        result = candidate
+                        break
+                if not _has_content(result):
+                    table_count = await connection.page.evaluate("() => document.querySelectorAll('table').length")
+                    output_json(
+                        {
+                            "error": f"No table found with selector '{selector}' or any fallback",
+                            "tables_on_page": table_count,
+                            "suggestion": "Omit the selector to auto-detect, or add --all to list all tables",
+                        }
+                    )
+                    return
+            table_data = result
+        else:
+            # Auto-detect: find first matching table with actual content
+            table_data = None
+            for fallback in _TABLE_FALLBACK_SELECTORS:
+                candidate = await connection.page.evaluate(_make_extract_table_js(fallback))
+                if _has_content(candidate):
+                    effective_sel = fallback
+                    table_data = candidate
+                    break
+            if table_data is None:
+                table_count = await connection.page.evaluate("() => document.querySelectorAll('table').length")
+                output_json(
+                    {
+                        "error": "No table found on page",
+                        "tables_on_page": table_count,
+                        "suggestion": "Try 'webscraper extract html' to inspect page structure",
+                    }
+                )
+                return
 
         if headers and headers != "auto":
-            # Use provided headers
             header_list = [h.strip() for h in headers.split(",")]
             table_data["headers"] = header_list
+
+        if note:
+            table_data["note"] = note
 
         output_json(table_data)
 
@@ -380,6 +496,82 @@ def table_csv(
         output_json({"message": f"Table exported to {output_file}", "rows": len(table_data)})
 
     run_async(_table_csv())
+
+
+@app.command()
+def records(
+    container: str = typer.Argument(
+        ..., help="CSS selector for repeating container elements (e.g. 'article', 'li.item')"
+    ),
+    fields: str = typer.Option(
+        ...,
+        "--fields",
+        "-f",
+        help='JSON mapping of field names to sub-selectors, e.g. \'{"name": "h2 a", "desc": "p"}\'',
+    ),
+    url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before extracting"),
+    wait_for_text: Optional[str] = typer.Option(
+        None, "--wait-for-text", help="Wait until this text appears before extracting"
+    ),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load (useful for SPAs)"),
+    format: Optional[str] = typer.Option(None, help="Output format: json, csv, plain, table"),
+    session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
+    headless: Optional[bool] = typer.Option(
+        None, "--headless/--headed", help="Run in headless mode (overrides global)"
+    ),
+):
+    """Extract structured records from repeating page elements.
+
+    Maps multiple sub-selectors per container element into a JSON array of objects.
+    Ideal for listings, cards, search results, and any repeating structure.
+
+    Examples:
+        cli.py extract records "article" --fields '{"name":"h2 a","desc":"p","stars":".stars"}' --url https://github.com/trending
+        cli.py extract records "tr" --fields '{"name":"td:nth-child(1)","value":"td:nth-child(2)"}' --url https://example.com
+    """
+
+    async def _extract_records():
+        connection = await get_connection(session_id, headless, url)
+
+        if wait_for:
+            await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+        if wait_for_text:
+            await connection.page.wait_for_function(
+                f"document.body.innerText.includes({json.dumps(wait_for_text)})",
+                timeout=settings.timeout,
+            )
+        if settle_time > 0:
+            await connection.page.wait_for_timeout(settle_time)
+
+        try:
+            field_map = json.loads(fields)
+        except json.JSONDecodeError as exc:
+            output_json({"error": f"--fields must be valid JSON: {exc}"})
+            return
+
+        # Build field extraction JS: iterate containers, query each sub-selector inside
+        field_entries_js = ", ".join(f"[{json.dumps(k)}, {json.dumps(v)}]" for k, v in field_map.items())
+        container_json = json.dumps(container)
+
+        js = f"""
+            (() => {{
+                const fieldMap = new Map([{field_entries_js}]);
+                return Array.from(document.querySelectorAll({container_json})).map(el => {{
+                    const record = {{}};
+                    fieldMap.forEach((subSel, key) => {{
+                        const child = el.querySelector(subSel);
+                        record[key] = child ? child.textContent.trim() : null;
+                    }});
+                    return record;
+                }});
+            }})()
+        """
+
+        result = await connection.page.evaluate(js)
+        output(result, format=format)
+
+    run_async(_extract_records())
 
 
 @app.command()

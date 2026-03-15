@@ -15,57 +15,113 @@ app = typer.Typer()
 
 @app.command()
 def click(
-    selector: str,
+    selector: Optional[str] = typer.Argument(None, help="CSS selector (omit when using --by-* options)"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     button: str = typer.Option("left", help="Mouse button: left, right, middle"),
     double: bool = typer.Option(False, "--double/--single", help="Perform double click"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after click"),
     settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after click (useful for SPAs)"),
+    by_text: Optional[str] = typer.Option(None, "--by-text", help="Click element by visible text (partial match)"),
+    by_role: Optional[str] = typer.Option(None, "--by-role", help="Click element by ARIA role (e.g. button, link)"),
+    by_name: Optional[str] = typer.Option(None, "--name", help="Accessible name filter for --by-role"),
+    by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Click element by data-testid attribute"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
     ),
 ):
-    """Click an element."""
+    """Click an element by CSS selector or semantic locator.
+
+    Semantic locators are stable alternatives to CSS selectors — they find elements
+    by visible text, ARIA role, or test ID rather than fragile class names.
+
+    Examples:
+        cli.py interact click ".submit-btn"
+        cli.py interact click --by-text "Submit"
+        cli.py interact click --by-role button --name "Search"
+        cli.py interact click --by-test-id "submit-btn"
+    """
 
     async def _click():
         connection = await get_connection(session_id, headless, url)
 
-        locator = connection.page.locator(selector).first
+        if by_text:
+            locator = connection.page.get_by_text(by_text, exact=False).first
+            label = f"text={by_text!r}"
+        elif by_role:
+            kwargs = {"name": by_name} if by_name else {}
+            locator = connection.page.get_by_role(by_role, **kwargs).first  # type: ignore[arg-type]
+            label = f"role={by_role!r}" + (f" name={by_name!r}" if by_name else "")
+        elif by_test_id:
+            locator = connection.page.get_by_test_id(by_test_id).first
+            label = f"test-id={by_test_id!r}"
+        elif selector:
+            locator = connection.page.locator(selector).first
+            label = selector
+        else:
+            output_json({"error": "Provide a CSS selector or one of --by-text, --by-role, --by-test-id"})
+            return
 
         if double:
-            await locator.dblclick(button=button)
+            await locator.dblclick()
         else:
-            await locator.click(button=button)
+            await locator.click()
 
         if wait_for:
             await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
         if settle_time > 0:
             await connection.page.wait_for_timeout(settle_time)
 
-        output_json({"message": f"Clicked {selector}"})
+        output_json({"message": f"Clicked {label}"})
 
     run_async(_click())
 
 
 @app.command()
 def type_text(
-    selector: str,
     text: str,
+    selector: Optional[str] = typer.Argument(None, help="CSS selector (omit when using --by-* options)"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     delay: Optional[int] = typer.Option(None, help="Delay between keystrokes in milliseconds"),
     clear: bool = typer.Option(False, "--clear/--no-clear", help="Clear the field before typing"),
+    by_label: Optional[str] = typer.Option(None, "--by-label", help="Target input by associated <label> text"),
+    by_placeholder: Optional[str] = typer.Option(None, "--by-placeholder", help="Target input by placeholder text"),
+    by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Target input by data-testid attribute"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
     headless: Optional[bool] = typer.Option(
         None, "--headless/--headed", help="Run in headless mode (overrides global)"
     ),
 ):
-    """Type text into an element."""
+    """Type text into an element by CSS selector or semantic locator.
+
+    Semantic locators are stable alternatives to CSS selectors — they find inputs
+    by their label text, placeholder, or test ID rather than fragile class names.
+
+    Examples:
+        cli.py interact type-text "#search" "Playwright"
+        cli.py interact type-text --by-label "Email" "user@example.com"
+        cli.py interact type-text --by-placeholder "Search..." "query"
+        cli.py interact type-text --by-test-id "email-input" "user@example.com"
+    """
 
     async def _type():
         connection = await get_connection(session_id, headless, url)
 
-        locator = connection.page.locator(selector).first
+        if by_label:
+            locator = connection.page.get_by_label(by_label).first
+            label = f"label={by_label!r}"
+        elif by_placeholder:
+            locator = connection.page.get_by_placeholder(by_placeholder).first
+            label = f"placeholder={by_placeholder!r}"
+        elif by_test_id:
+            locator = connection.page.get_by_test_id(by_test_id).first
+            label = f"test-id={by_test_id!r}"
+        elif selector:
+            locator = connection.page.locator(selector).first
+            label = selector
+        else:
+            output_json({"error": "Provide a CSS selector or one of --by-label, --by-placeholder, --by-test-id"})
+            return
 
         if clear:
             await locator.clear()
@@ -75,7 +131,7 @@ def type_text(
         else:
             await locator.fill(text)
 
-        output_json({"message": f"Typed text into {selector}"})
+        output_json({"message": f"Typed text into {label}"})
 
     run_async(_type())
 
@@ -421,12 +477,34 @@ def fill_form(
             # Fill form fields
             filled = []
             for field_name, value in form_data.items():
-                # Try multiple selectors
-                selectors = [
+                # Try label-based discovery first: find <label> whose text contains field_name,
+                # then follow its `for` attribute to the target input id.
+                label_for = await connection.page.evaluate(
+                    """
+                    (name) => {
+                        const labels = Array.from(document.querySelectorAll('label'));
+                        const match = labels.find(
+                            l => l.textContent.trim().toLowerCase().includes(name.toLowerCase())
+                        );
+                        return match ? (match.htmlFor || null) : null;
+                    }
+                """,
+                    field_name,
+                )
+
+                # Build ordered selector list: label-derived id first, then name/id/aria/placeholder
+                selectors = []
+                if label_for:
+                    selectors.append(f"#{label_for}")
+                selectors += [
                     f'input[name="{field_name}"]',
                     f'input[id="{field_name}"]',
                     f'textarea[name="{field_name}"]',
                     f'select[name="{field_name}"]',
+                    f'input[aria-label*="{field_name}" i]',
+                    f'textarea[aria-label*="{field_name}" i]',
+                    f'input[placeholder*="{field_name}" i]',
+                    f'[data-testid*="{field_name}" i]',
                 ]
 
                 filled_field = False

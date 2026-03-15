@@ -23,6 +23,7 @@ from commands import (
     interact,
     navigate,
     network,
+    recon,
     record,
     shadow,
     storage,
@@ -158,16 +159,33 @@ def goto(
 
 @app.command()
 def click(
-    selector: str,
+    selector: Optional[str] = typer.Argument(None, help="CSS selector (omit when using --by-* options)"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
     button: str = typer.Option("left", help="Mouse button: left, right, middle"),
     double: bool = typer.Option(False, "--double/--single", help="Perform double click"),
     wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector after click"),
     settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after click (useful for SPAs)"),
+    by_text: Optional[str] = typer.Option(None, "--by-text", help="Click element by visible text (partial match)"),
+    by_role: Optional[str] = typer.Option(None, "--by-role", help="Click element by ARIA role (e.g. button, link)"),
+    by_name: Optional[str] = typer.Option(None, "--name", help="Accessible name filter for --by-role"),
+    by_test_id: Optional[str] = typer.Option(None, "--by-test-id", help="Click element by data-testid attribute"),
     session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
 ):
-    """Click an element."""
-    interact.click(selector, url, button, double, wait_for, settle_time, session_id, settings.headless)
+    """Click an element by CSS selector or semantic locator."""
+    interact.click(
+        selector,
+        url,
+        button,
+        double,
+        wait_for,
+        settle_time,
+        by_text,
+        by_role,
+        by_name,
+        by_test_id,
+        session_id,
+        settings.headless,
+    )
 
 
 @app.command()
@@ -210,6 +228,18 @@ def help_cmd(
 ):
     """Show detailed help for a command or category (shortcut for docs help)."""
     docs.help(command, category)
+
+
+@app.command(name="recon")
+def recon_cmd(
+    url: Optional[str] = typer.Option(None, "--url", "-u", help="URL to navigate to first"),
+    selectors: bool = typer.Option(True, "--selectors/--no-selectors", help="Include key_selectors probe"),
+    wait_for: Optional[str] = typer.Option(None, "--wait-for", help="Wait for CSS selector before analysis"),
+    settle_time: int = typer.Option(0, "--settle-time", help="Extra ms to wait after page load"),
+    session_id: Optional[str] = typer.Option(None, help="Session ID to use"),
+):
+    """One-shot page reconnaissance: headings, forms, tables, links, SPA detection (shortcut for recon recon)."""
+    recon.recon(url, selectors, wait_for, settle_time, session_id, settings.headless)
 
 
 if __name__ == "__main__":
