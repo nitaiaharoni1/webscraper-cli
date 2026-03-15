@@ -19,7 +19,20 @@ async def _persist_session(connection, session_id, headless):
     effective_headless = headless if headless is not None else settings.headless
     if session_id or effective_headless:
         try:
-            await connection.page.wait_for_load_state("load", timeout=5000)
+            current_url = connection.page.url
+            # Give redirects a moment to start
+            await connection.page.wait_for_timeout(500)
+            # If URL changed, a redirect is in progress — wait for it to finish
+            if connection.page.url != current_url:
+                try:
+                    await connection.page.wait_for_load_state("load", timeout=5000)
+                except Exception:
+                    pass
+            # Also settle networkidle for post-redirect content
+            try:
+                await connection.page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass
         except Exception:
             pass
         await save_session_state(connection, session_id or "default")
@@ -66,7 +79,15 @@ def click(
         connection = await get_connection(session_id, headless, url)
 
         if by_text:
-            locator = connection.page.get_by_text(by_text, exact=False).first
+            # Prefer interactive elements (links/buttons) over text containers
+            link_loc = connection.page.get_by_role("link", name=by_text)  # type: ignore[arg-type]
+            button_loc = connection.page.get_by_role("button", name=by_text)  # type: ignore[arg-type]
+            if await link_loc.count() > 0:
+                locator = link_loc.first
+            elif await button_loc.count() > 0:
+                locator = button_loc.first
+            else:
+                locator = connection.page.get_by_text(by_text, exact=False).first
             label = f"text={by_text!r}"
         elif by_role:
             kwargs = {"name": by_name} if by_name else {}
@@ -600,8 +621,26 @@ def fill_form(
                         field = form_locator.locator(sel).first
                         if await field.count() > 0:
                             tag_name = await field.evaluate("el => el.tagName.toLowerCase()")
+                            input_type = await field.evaluate("el => (el.type || '').toLowerCase()")
+
                             if tag_name == "select":
                                 await field.select_option(str(value))
+                            elif input_type in ("checkbox", "radio"):
+                                should_check = str(value).lower() not in ("false", "0", "no", "off", "")
+                                is_visible = await field.is_visible()
+                                if not is_visible:
+                                    # Click the label instead of the hidden input
+                                    field_id = await field.get_attribute("id")
+                                    if field_id:
+                                        label_sel = f'label[for="{field_id}"]'
+                                        try:
+                                            await connection.page.locator(label_sel).click()
+                                            filled.append(field_name)
+                                            filled_field = True
+                                            break
+                                        except Exception:
+                                            pass
+                                await field.set_checked(should_check)
                             else:
                                 await field.fill(str(value))
                             filled.append(field_name)

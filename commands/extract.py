@@ -1508,6 +1508,20 @@ def _split_aria_blocks(snapshot: str, container: str) -> List[str]:
     return blocks
 
 
+def _auto_detect_containers(snapshot: str) -> list:
+    """Auto-detect repeating structural patterns in ARIA snapshot."""
+    all_generics = _split_aria_blocks(snapshot, "generic")
+    content_blocks = []
+    for block in all_generics:
+        has_heading = bool(re.search(r"\bheading\b", block, re.IGNORECASE))
+        has_content = bool(re.search(r"\bparagraph\b|\blink\b", block, re.IGNORECASE))
+        if has_heading and has_content:
+            content_blocks.append(block)
+    if len(content_blocks) >= 3:
+        return content_blocks
+    return []
+
+
 def _extract_fields_from_aria_block(block: str, fields: Optional[List[str]]) -> Dict[str, Any]:
     """Extract fields from an ARIA snapshot YAML block using regex heuristics."""
     record: Dict[str, Any] = {}
@@ -1558,21 +1572,38 @@ def _extract_fields_from_aria_block(block: str, fields: Optional[List[str]]) -> 
                     record["stars"] = txt
                     break
 
-    # --- language: line with "language" label ---
+    # --- language ---
     if wanted is None or "language" in wanted:
+        # Strategy 1: line with explicit "language" label
         for line in block.splitlines():
             if "language" in line.lower():
                 m = re.search(r'"([^"]+)"', line)
                 if m:
                     record["language"] = m.group(1).strip()
                     break
+        # Strategy 2: standalone short text/generic node matching PL name pattern
         if "language" not in record:
-            # plain text node right after programming language patterns
+            _PL_RE = re.compile(r"^[A-Z][a-zA-Z0-9+#.]*$")
+            _PL_EXCLUDE = {
+                "Star",
+                "Sponsor",
+                "Built",
+                "Watch",
+                "Fork",
+                "Code",
+                "Issues",
+                "Pull",
+                "Actions",
+                "Projects",
+                "Wiki",
+                "Security",
+                "Insights",
+            }
             for line in block.splitlines():
-                m = re.match(r"\s+-\s+text:\s+(\S+)", line)
-                if m and not any(c in m.group(1) for c in [",", "/", "http", "@"]):
-                    val = m.group(1).strip()
-                    if re.match(r"^[A-Z][a-zA-Z+#]*$", val) and len(val) > 1:
+                m = re.match(r"\s+-\s+(?:text|generic)(?:\s+\[.*?\])?:\s*(.+)", line)
+                if m:
+                    val = m.group(1).strip().strip('"')
+                    if _PL_RE.match(val) and len(val) <= 20 and val not in _PL_EXCLUDE:
                         record["language"] = val
                         break
 
@@ -1659,6 +1690,17 @@ def smart_records(
             blocks = _split_aria_blocks(snapshot, "listitem")
         if not blocks and container.lower() in ("article", "listitem"):
             blocks = _split_aria_blocks(snapshot, "row")
+        if not blocks:
+            blocks = _split_aria_blocks(snapshot, "generic")
+            # Filter generic blocks: must contain heading + (paragraph or link)
+            blocks = [
+                b
+                for b in blocks
+                if re.search(r"\bheading\b", b, re.IGNORECASE)
+                and re.search(r"\bparagraph\b|\blink\b", b, re.IGNORECASE)
+            ]
+        if not blocks:
+            blocks = _auto_detect_containers(snapshot)
 
         if not blocks:
             output_json({"error": f"No '{container}' blocks found in accessibility snapshot.", "records": []})
@@ -1668,6 +1710,15 @@ def smart_records(
             blocks = blocks[:limit]
 
         records_out = [_extract_fields_from_aria_block(b, field_list) for b in blocks]
-        output_json(records_out)
+        if format == "csv":
+            from core.output import _output_csv
+
+            _output_csv(records_out)
+        elif format == "table":
+            from core.output import _output_table
+
+            _output_table(records_out)
+        else:
+            output_json(records_out)
 
     run_async(_smart_records())
