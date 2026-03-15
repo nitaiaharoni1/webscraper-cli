@@ -131,7 +131,11 @@ def click(
                     else:
                         await locator.click(force=True)
                 except Exception:
-                    raise
+                    # Final fallback: JS dispatch — bypasses overlay/ad iframe interception
+                    try:
+                        await locator.evaluate("el => el.click()")
+                    except Exception:
+                        raise
             else:
                 raise
 
@@ -655,24 +659,34 @@ def fill_form(
             result = {"message": f"Filled {len(filled)} fields", "fields": filled}
 
             if submit and filled:
-                # Try clicking a submit button first, then fall back to form.submit()
+                # Try clicking a submit button first, then fall back to form submit event
                 submitted = False
                 for submit_sel in [
                     'button[type="submit"]',
                     'input[type="submit"]',
                     "button:not([type])",
+                    # Also try type="button" with submit-like id/text (React/SPA forms)
+                    'button[type="button"][id*="submit" i]',
+                    'button[type="button"][class*="submit" i]',
                 ]:
                     try:
                         btn = form_locator.locator(submit_sel).first
                         if await btn.count() > 0:
-                            await btn.click()
+                            try:
+                                await btn.click()
+                            except Exception:
+                                # JS dispatch bypasses overlay/ad iframe interception
+                                await btn.evaluate("el => el.click()")
                             submitted = True
                             break
                     except Exception:
                         continue
                 if not submitted:
-                    await form_locator.evaluate("form => form.submit()")
-                # Wait for navigation
+                    # Dispatch submit event — triggers React/Vue/Angular handlers
+                    await form_locator.evaluate(
+                        "form => form.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}))"
+                    )
+                # Wait for navigation/settle
                 try:
                     await connection.page.wait_for_load_state("networkidle", timeout=15000)
                 except Exception as e:
@@ -685,6 +699,11 @@ def fill_form(
                         raise
                 if wait_for:
                     await connection.page.wait_for_selector(wait_for, timeout=settings.timeout)
+                    # Include matched element content in result — captures transient UI (modals, flash messages)
+                    try:
+                        result["content"] = await connection.page.locator(wait_for).first.inner_text()
+                    except Exception:
+                        pass
                 if settle_time > 0:
                     await connection.page.wait_for_timeout(settle_time)
                 result["submitted"] = True
