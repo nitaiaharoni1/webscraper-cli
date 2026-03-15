@@ -612,10 +612,12 @@ def fill_form(
                     f'input[name="{field_name}"]',
                     f'input[id="{field_name}"]',
                     f'textarea[name="{field_name}"]',
+                    f'textarea[id="{field_name}"]',
                     f'select[name="{field_name}"]',
                     f'input[aria-label*="{field_name}" i]',
                     f'textarea[aria-label*="{field_name}" i]',
                     f'input[placeholder*="{field_name}" i]',
+                    f'textarea[placeholder*="{field_name}" i]',
                     f'[data-testid*="{field_name}" i]',
                 ]
 
@@ -653,6 +655,28 @@ def fill_form(
                     except Exception:
                         continue
 
+                if not filled_field:
+                    # Fallback: use Playwright get_by_label for checkboxes/radios missed by selectors
+                    try:
+                        label_loc = connection.page.get_by_label(field_name, exact=False)
+                        if await label_loc.count() > 0:
+                            field = label_loc.first
+                            input_type = await field.evaluate("el => (el.type || '').toLowerCase()")
+                            if input_type in ("checkbox", "radio"):
+                                should_check = str(value).lower() not in ("false", "0", "no", "off", "")
+                                is_visible = await field.is_visible()
+                                if not is_visible:
+                                    field_id = await field.get_attribute("id")
+                                    if field_id:
+                                        await connection.page.locator(f'label[for="{field_id}"]').click()
+                                        filled.append(field_name)
+                                        filled_field = True
+                                if not filled_field:
+                                    await field.set_checked(should_check)
+                                    filled.append(field_name)
+                                    filled_field = True
+                    except Exception:
+                        pass
                 if not filled_field:
                     output_json({"warning": f"Field {field_name} not found"})
 
